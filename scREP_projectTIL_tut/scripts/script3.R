@@ -51,3 +51,40 @@ table(seu@meta.data$sampleName)
 #    1759    1746    1291    1386
 
 # --- prepare tcr data ----------------------------------------------------
+# make list with tcr samples
+sample_ids_vdj <- c(4:7)
+names(sample_ids_vdj) <- c(35:38)
+sample_ids_vdj
+# 35 36 37 38
+#  4  5  6  7
+names(sample_ids_vdj)
+# [1] "35" "36" "37" "38"
+vdj_samples_list <- list()
+# miejsce na liście musi zaczynać się od 1 i kończyć na 4, an nie od 35,
+# dlatego trzeba taki myk z names(sample_ids_vdj)[i]
+for (i in seq_along(sample_ids_vdj)) { # i = 1,2,3,4
+  print(i)
+  sample_name <- names(sample_ids_vdj)[i] # 1 == 35, 2 = 36 etc...
+  vdj_samples_list[[i]] <- read.csv(
+    sprintf(
+      "data/tcr/filtered_contig_annotations_%s.csv", sample_name
+    )
+  )
+  # resolving the problem with barcodes (as mentioned below)
+  vdj_samples_list[[i]]$barcode <- sub(
+    "\\d$", sample_ids_vdj[[i]], vdj_samples_list[[i]]$barcode
+    # will I ever learn regex?
+    # \d == [0-9]; $ == end of line
+    # additional "\" is an escape symbol in R
+  )
+}
+# the problem with barcodes:
+head(vdj_samples_list[[1]])
+# AAACCTGAGGCAATTA-1
+head(vdj_samples_list[[2]])
+# AAACCTGAGCAATCTC-1
+# meanwhile...
+head(seu@meta.data)
+# AAACGGGCATCCTAGA-4
+tail(seu@meta.data)
+# TTTGCGCCAGCATACT-7
