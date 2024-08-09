@@ -1,0 +1,20 @@
+# Output Files
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_airr_rearrangement.tsv
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_cell_barcodes.json
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_clonotypes.csv
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_concat_ref.bam
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_concat_ref.bam.bai
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_concat_ref.fasta
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_concat_ref.fasta.fai
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_consensus_annotations.csv
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_consensus.bam
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_consensus.bam.bai
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_consensus.fasta
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_consensus.fasta.fai
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_filtered_contig_annotations.csv
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_filtered_contig.fasta
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_filtered_contig.fastq
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_vdj_contig_info.pb
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_vdj_t_vloupe.vloupe
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_antigen_analysis_antigen_specificity_scores.csv
+wget https://cf.10xgenomics.com/samples/cell-vdj/7.1.0/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2/2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_2k_BEAM-T_Mouse_H2Kb_OT-1_5pv2_antigen_analysis_per_barcode.csv

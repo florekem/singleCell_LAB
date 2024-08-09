@@ -118,7 +118,7 @@ download.file(
   "https://figshare.com/ndownloader/files/41414556",
   destfile = "CD8T_human_ref_v1.rds" # seurat object
 )
-ref_cd8 <- load.reference.map("scripts/CD8T_human_ref_v1.rds")
+ref_cd8 <- load.reference.map("CD8T_human_ref_v1.rds")
 class(ref_cd8)
 # [1] "SeuratObject"
 ref_cd8
