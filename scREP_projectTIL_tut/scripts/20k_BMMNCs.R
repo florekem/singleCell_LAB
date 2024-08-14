@@ -3,6 +3,9 @@
 # variable names with "_", variable_name
 # column names with "." column.name
 
+# variable names with "_", variable_name
+# column names with "." column.name
+
 library(Seurat)
 library(ggplot2)
 library(patchwork)
@@ -35,6 +38,7 @@ seu
 # 36601 features across 17645 samples within 1 assay
 # Active assay: RNA (36601 features, 0 variable features)
 #  1 layer present: counts
+colnames(seu@meta.data)
 colnames(seu@meta.data)
 # --- filter seuratObject ----------------------------------------------------
 s_genes <- cc.genes$s.genes
