@@ -228,7 +228,8 @@ ref_cd4 <- load.reference.map(
 seu_tcr <- Run.ProjecTILs( # these variable names doesnt make any sense, fix it
   seu_tcr,
   ref = ref_cd4,
-  ncores = 1
+  ncores = 1,
+  overwrite = FALSE # very important if analyzig cd4 and cd8 simultan.
 )
 
 p1 <- plot.projection(ref_cd4) + theme(aspect.ratio = 1)
