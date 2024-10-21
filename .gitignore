@@ -6,3 +6,8 @@ Abdelfattah/data
 Abdelfattah/rds
 markers_test/coreGMmap.rds
 .gitignore
+tremendos/m2.extracellular.rds
+tremendos/m2.hallmarl_all_pathways.rds
+tremendos/m2.lipid.rds
+tremendos/m2.phagocytosis.rds
+tremendos/m8.all.v2024.1.Mm.symbols.gmt

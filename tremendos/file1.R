@@ -51,43 +51,18 @@ ego3_tumor_c3 <- gseGO(
 dotplot(ego3_tumor_c3, showCategory = 30, x = "enrichmentScore")
 
 
-library(msigdbr)
-msigdbr_species()
-?msigdbr
 
-mouse_df <- msigdbr(species = "mouse")
-unique(mouse_df$gs_cat)
-# [1] "C3" "C2" "C8" "C6" "C7" "C4" "C5" "H"  "C1"
-head(mouse_df, 3) %>% as.data.frame()
-
-m_t2g <- msigdbr(species = "mouse", category = "C6") %>%
-  dplyr::select(gs_name, gene_symbol)
-head(m_t2g)
-
-# over-representation analysis
-em <- enricher(names(gsea_tumor_c3), TERM2GENE = m_t2g)
-head(em)
-
+# over-representation analysis of ANY (not only go) database (msig)
+# msig files downloaded from the website.
+# i've tried to use msigdbr package, but it is outdated
+# so now I can use msigdb not only for gsea, but also for over-rep.
 msig <- read.gmt("mh.all.v2024.1.Mm.symbols.gmt")
-msig <- read.gmt("m2.all.v2024.1.Mm.symbols.gmt")
+msig <- read.gmt("./m2.all.v2024.1.Mm.symbols.gmt")
+msig <- read.gmt("./m8.all.v2024.1.Mm.symbols.gmt")
 colnames(msig) <- c("gs_name", "gene_symbol")
 
 unique(msig$gs_name)
 
-# search in msigdb .gmt for specific pathways and use them to
-# construct heatmaps of genes that constitute those pathways
-msig_filtered <- filter(msig, grepl("phagocytosis", gs_name, ignore.case = TRUE))
-msig_filtered
-
-pathay_wp_microglia_phagocyt <- msig_filtered |>
-  filter(grepl("WP_MICROGLIA_PATHOGEN_PHAGOCYTOSIS_PATHWAY", gs_name)) |>
-  select(gene_symbol) |>
-  as.vector()
-
-pathay_ractome_role_of_phoph_in_phago <- msig_filtered |>
-  filter(grepl("REACTOME_ROLE_OF_PHOSPHOLIPIDS_IN_PHAGOCYTOSIS", gs_name)) |>
-  select(gene_symbol) |>
-  as.vector()
 
 em <- enricher(
   names(upreg_gsea_tumor_c3),
@@ -97,6 +72,34 @@ em <- enricher(
   qvalueCutoff = 0.05
 )
 dotplot(em)
+
+# there is not too much hits.
+# now I want to extract genes for pathways, that contains specific
+# keyword, and make heatmaps using theese genes, even if those pathways
+# are not significant.
+# search in msigdb .gmt for specific pathways and use them to
+# construct heatmaps of genes that constitute those pathways
+# creates a .rds file with list of names lists,
+# where each name is a name of a pathway
+msig_filtered <- filter(msig, grepl("", gs_name, ignore.case = TRUE))
+msig_gs_name <- unique(msig_filtered$gs_name)
+msig_gs_name <- as.character(msig_gs_name)
+list_of_pathways_w_genes <- list()
+for (i in msig_gs_name) {
+  print(i)
+  pathway <- msig_filtered |>
+    filter(grepl(i, gs_name)) |>
+    select(gene_symbol) |>
+    as.vector()
+  names(pathway) <- i
+  list_of_pathways_w_genes <- append(list_of_pathways_w_genes, pathway)
+}
+list_of_pathways_w_genes
+saveRDS(list_of_pathways_w_genes, "m2.hallmarl_all_pathways.rds")
+
+
+
+
 
 em2 <- GSEA(
   gsea_tumor_c3,
