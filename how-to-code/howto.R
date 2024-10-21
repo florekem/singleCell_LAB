@@ -72,3 +72,14 @@ sum_integers <- function(a, b) {
 }
 
 sum_integers(1, 10)
+# block structure, that will be removed using lambda later
+pi_sum <- function(a, b) {
+  pi_term <- function(x) {
+    return(1.0 / (x * (x + 2)))
+  }
+  pi_next <- function(x) {
+    return(x + 4)
+  }
+  return(summing_fun(pi_term, a, pi_next, b))
+}
+8 * pi_sum(1, 1000)
