@@ -73,36 +73,36 @@ seu_joined <- NormalizeData(
   seu_joined,
   assay = "HTO", normalization.method = "CLR"
 )
-seu_joined <- HTODemux(
+seu_singlet <- HTODemux(
   seu_joined,
   assay = "HTO",
   positive.quantile = 0.99
 )
-seu_joined
+seu_singlet
 
 RidgePlot(
-  seu_joined,
+  seu_singlet,
   assay = "HTO",
-  features = rownames(seu_joined[["HTO"]])[1:6],
+  features = rownames(seu_singlet[["HTO"]])[1:6],
   ncol = 3
 )
 
-seu_joined$sex <- "test" # need to create filled columns first
-seu_joined$condition <- "test"
-seu_joined$condition[grepl("ctrl", seu_joined$hash.ID)] <- "ctrl"
-seu_joined$condition[grepl("D14", seu_joined$hash.ID)] <- "D14"
-seu_joined$condition[grepl("D21", seu_joined$hash.ID)] <- "D21"
-seu_joined$sex[grepl("F", seu_joined$hash.ID)] <- "Female"
-seu_joined$sex[grepl("M", seu_joined$hash.ID)] <- "Male"
-colnames(seu_joined@meta.data)
-head(seu_joined@meta.data)
+seu_singlet$sex <- "test" # need to create filled columns first
+seu_singlet$condition <- "test"
+seu_singlet$condition[grepl("ctrl", seu_singlet$hash.ID)] <- "ctrl"
+seu_singlet$condition[grepl("D14", seu_singlet$hash.ID)] <- "D14"
+seu_singlet$condition[grepl("D21", seu_singlet$hash.ID)] <- "D21"
+seu_singlet$sex[grepl("F", seu_singlet$hash.ID)] <- "Female"
+seu_singlet$sex[grepl("M", seu_singlet$hash.ID)] <- "Male"
+colnames(seu_singlet@meta.data)
+head(seu_singlet@meta.data)
 
-HTOHeatmap(seu_joined, assay = "HTO", ncells = 5000)
+HTOHeatmap(seu_singlet, assay = "HTO", ncells = 5000)
 
 # subset singlets only
-Idents(seu_joined) <- "HTO_classification.global"
+Idents(seu_singlet) <- "HTO_classification.global"
 
-seu_joined_singlet <- subset(seu_joined, idents = "Singlet")
+seu_joined_singlet <- subset(seu_singlet, idents = "Singlet")
 
 RidgePlot(
   seu_joined_singlet,
