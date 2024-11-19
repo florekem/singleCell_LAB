@@ -43,6 +43,8 @@ seu <- CreateSeuratObject(
   counts = Matrix::Matrix(as.matrix(gex), sparse = TRUE)
 )
 
+
+
 # Normalize RNA data with log normalization
 seu <- NormalizeData(seu)
 # Find and scale variable features
@@ -84,11 +86,54 @@ colnames(seu_demux@meta.data)
 seu_singlet <- subset(seu_demux, idents = c("tumor", "csf"))
 head(seu_singlet@meta.data)
 
+# filter cells
+seu_singlet <- PercentageFeatureSet(
+  seu_singlet,
+  pattern = "^MT-",
+  col.name = "percent_mito"
+)
+seu_singlet[["log10GenesPerUmi"]] <-
+  log10(seu_singlet$nFeature_RNA) / log10(seu_singlet$nCount_RNA)
+
+Seurat::VlnPlot(
+  seu_singlet,
+  features = c(
+    "nCount_RNA",
+    "nFeature_RNA",
+    "percent_mito"
+  )
+)
+
+seu_singlet <- subset(
+  seu_singlet,
+  subset = nFeature_RNA > 200 &
+    nFeature_RNA < 7000 &
+    nCount_RNA < 50000 &
+    nCount_RNA > 30 &
+    percent_mito < 8
+)
+seu_singlet
+# An object of class Seurat
+# 38650 features across 15250 samples within 3 assays
+
+Seurat::VlnPlot(
+  seu_singlet_subset,
+  features = c(
+    "nCount_RNA",
+    "nFeature_RNA",
+    "percent_mito"
+  )
+)
+
+# after filtering
 # subset csf and tumor samples into dif. variables (for tcr analysis)
 seu_singlet_csf <- subset(seu_singlet, subset = MULTI_ID == "csf")
 seu_singlet_tumor <- subset(seu_singlet, subset = MULTI_ID == "tumor")
+seu_singlet_csf
+seu_singlet_tumor
 
-#
+# THIS SHOLD NOT BE DONE WITH TCR data (I think so)
+# but for gex and adt please be my guest
 # analysis of tumor and csf together!!!!
 DefaultAssay(seu_singlet) <- "RNA"
 seu_singlet <- NormalizeData(seu_singlet)

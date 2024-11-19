@@ -10,6 +10,32 @@ tcr_sample <- read_csv("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per
 head(tcr_sample)
 dim(tcr_sample)
 
+# analysis of tumor and csf together!!!!
+DefaultAssay(seu_singlet) <- "RNA"
+seu_singlet <- NormalizeData(seu_singlet)
+seu_singlet <- FindVariableFeatures(seu_singlet)
+seu_singlet <- ScaleData(seu_singlet)
+
+seu_singlet <- RunPCA(seu_singlet)
+seu_singlet <- FindNeighbors(
+  seu_singlet,
+  reduction = "pca", dims = 1:50
+)
+seu_singlet <- FindClusters(
+  seu_singlet,
+  resolution = 1.1, verbose = FALSE
+)
+seu_singlet <- RunUMAP(
+  seu_singlet,
+  reduction = "pca", dims = 1:30
+)
+
+DimPlot(
+  seu_singlet,
+  group.by = "MULTI_ID", reduction = "umap"
+)
+
+
 combined_tcr <- combineTCR(
   tcr_sample_list,
   # to make things easier, w/o 'samples' argument
