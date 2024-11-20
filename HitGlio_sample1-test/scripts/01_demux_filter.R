@@ -1,5 +1,7 @@
 # according to: https://satijalab.org/seurat/articles/hashing_vignette
 
+# httpgd::hgd_url()
+
 library(Seurat)
 library(ggplot2)
 library(Matrix)
@@ -193,6 +195,7 @@ FeaturePlot(
   # max.cutoff = 2,
   label = TRUE
 ) & mycolor2
+
 
 # cell metaprograms
 # from: Liu, Ilon, Li Jiang, Erik R. Samuelsson, Sergio Marco Salas, Alexander Beck, Olivia A. Hack, Daeun Jeong, et al. “The Landscape of Tumor Cell States and Spatial Organization in H3-K27M Mutant Diffuse Midline Glioma across Age and Location.” Nature Genetics 54, no. 12 (December 2022): 1881–94. https://doi.org/10.1038/s41588-022-01236-3. # nolint
