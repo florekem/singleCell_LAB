@@ -9,10 +9,11 @@ library(Matrix)
 library(tidyverse)
 library(clustree)
 library(reticulate) # load packages required by leiden algo
-library(leiden) # not sure if this one is req, check that next
-use_python("/usr/bin/python3") # this is crucial for leiden working
+reticulate::use_condaenv("/mnt/sda4/conda/envs/R")
 library(viridis) # colors
 mycolor2 <- scale_color_viridis(option = "viridis")
+
+library(sceasy) # convert to anndata, scvi integration
 library(dittoSeq)
 # 1. Paths ------------------------------------------------------
 setwd("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test")
@@ -218,7 +219,10 @@ seu_singlet <- RunUMAP(
   reduction = "pca", dims = 1:30
 )
 
-## 6.1. Vizualize clusters and quality features after quality filtiring -----
+## 6.1 Save RDS after quality filtering -------------------------------
+saveRDS(seu_singlet, "RDS/seu_singlet_after-filtering.rds")
+
+## 6.2. Vizualize clusters and quality features after quality filtiring -----
 DimPlot(
   seu_singlet,
   group.by = "MULTI_ID", reduction = "umap",
@@ -273,21 +277,26 @@ DefaultAssay(seu_singlet) <- "SCT"
 seu_singlet <- RunPCA(seu_singlet)
 ElbowPlot(seu_singlet, ndims = 40)
 
+dims <- 1:20
 seu_singlet <- FindNeighbors(
   seu_singlet,
-  reduction = "pca", dims = 1:50 # increased bc of SCT
+  reduction = "pca", dims = dims,
+  k.param = 30
 )
 seu_singlet <- FindClusters(
   seu_singlet,
-  resolution = 0.2, verbose = FALSE,
-  algorithm = 4 # leiden
+  resolution = 0.8, verbose = FALSE,
+  algorithm = 4, # leiden
+  group.singletons = FALSE
 )
 seu_singlet <- RunUMAP(
   seu_singlet,
-  reduction = "pca", dims = 1:50
+  reduction = "pca", dims = dims
 )
 
 ## 7.1. Vizualize clusters and quality features after quality filtiring ------
+table(Idents(seu_singlet))
+
 DimPlot(
   seu_singlet,
   group.by = "MULTI_ID", reduction = "umap",
@@ -295,7 +304,8 @@ DimPlot(
 )
 DimPlot(
   seu_singlet,
-  group.by = "seurat_clusters", reduction = "umap",
+  group.by = c("MULTI_ID", "seurat_clusters"),
+  reduction = "umap",
   label = TRUE
 )
 FeaturePlot(
@@ -325,9 +335,14 @@ Seurat::VlnPlot(
     "nFeature_RNA",
     "percent_mito",
     "percent_ribo",
-    "percent_hemoglob"
+    "percent_hemoglob",
+    "log10GenesPerUmi"
   )
 )
+
+## 7.3 Save RDS of clustered singlets
+saveRDS(seu_singlet, "RDS/seu_singlet-clustered-27nov2024.rds")
+seu_singlet
 
 # 8. Visualize GEX and ADT features ---------
 ## 8.1 GEX ----------------
@@ -370,12 +385,12 @@ f3 <- features[22:32]
 f4 <- features[33:42]
 
 p1 <- FeaturePlot(
-  seu_singlet, f1,
+  seu_singlet, f4,
   # max.cutoff = 2,
   label = TRUE
 ) & mycolor2
 p1
-ggsave("plots/p4.png", p1)
+ggsave("plots/totalvi-p4.png", p1)
 
 saveRDS()
 
@@ -385,9 +400,107 @@ FeaturePlot(
   label = TRUE
 ) & mycolor2
 
+# 9. totalVI model training ------------------
+# /not sure if it will produce any good output, but lets try
 
+## 9.1 convert to anndata (mudata) -----------
+seu_singlet <- readRDS("../RDS/seu_singlet-clustered-27nov2024.rds")
 
+seu_singlet[["RNA3"]] <- as(object = seu_singlet[["RNA"]], Class = "Assay")
+DefaultAssay(seu_singlet) <- "RNA3"
+seu_singlet[["RNA"]] <- NULL
+seu_singlet <- RenameAssays(object = seu_singlet, RNA3 = "RNA")
 
+DefaultAssay(seu_singlet) <- "ADT"
+seu_singlet
+adata <- convertFormat(
+  seu_singlet,
+  from = "seurat",
+  to = "anndata",
+  # main_layer = "counts",
+  # assay  = "ADT",
+  assay = "RNA",
+  drop_single_values = FALSE,
+  # outFile = "RDS/test-adt.h5ad"
+  outFile = "RDS/test-rna.h5ad"
+)
+adata
+
+## go to python, and bring back latent.csv
+latent <- read.csv("RDS/latent-totalVI.csv")
+latent_mtx <- as.matrix(latent)
+rownames(latent_mtx) <- colnames(seu_singlet)
+latent_mtx <- latent_mtx[, -1] # remove 1st col
+colnames(latent_mtx) <- paste0("totalvi_", 1:20)
+colnames(latent_mtx)
+
+DefaultAssay(seu_singlet) <- "SCT"
+seu_singlet
+colnames(seu_singlet@meta.data)
+
+seu_singlet[["totalvi"]] <- CreateDimReducObject(
+  embeddings = latent_mtx,
+  key = "totalvi_",
+  assay = DefaultAssay(seu_singlet)
+)
+
+seu_singlet <- FindNeighbors(
+  seu_singlet,
+  dims = 1:20,
+  reduction = "totalvi"
+)
+seu_singlet <- FindClusters(
+  seu_singlet,
+  resolution = 0.5,
+  algorithm = 4
+)
+seu_singlet <- RunUMAP(
+  seu_singlet,
+  dims = 1:20,
+  reduction = "totalvi",
+  # n.components = 2
+)
+DimPlot(
+  seu_singlet,
+  reduction = "umap",
+  pt.size = 0.5,
+  group.by = "seurat_clusters",
+  label = TRUE
+)
+
+DimPlot(
+  seu_singlet,
+  reduction = "umap",
+  pt.size = 0.5,
+  group.by = "signleR_anot",
+  label = TRUE
+)
+
+DefaultAssay(seu_singlet) <- "SCT"
+
+FeaturePlot(
+  seu_singlet,
+  # tcels,
+  macrophages,
+  reduction = "umap",
+  label = TRUE
+)
+
+DefaultAssay(seu_singlet) <- "ADT"
+
+seu_singlet <- NormalizeData(
+  seu_singlet,
+  assay = "ADT",
+  normalization.method = "CLR"
+)
+
+FeaturePlot(
+  seu_singlet,
+  # c("TotalSeqC-CD8", "TotalSeqC-CD4"),
+  c("TotalSeqC-CD8", "TotalSeqC-CD14"),
+  # max.cutoff = 4,
+  label = TRUE
+) & mycolor2
 
 # vizualize clonality
 library(scRepertoire)

@@ -13,3 +13,7 @@ tremendos/m2.phagocytosis.rds
 tremendos/m8.all.v2024.1.Mm.symbols.gmt
 HitGlio_sample1-test/data
 HitGlio_sample1-test/plots
+glioma/
+pediatric/
+RDS/
+.ipynb_checkpoints/
