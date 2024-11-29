@@ -21,6 +21,9 @@ setwd("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test")
 sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per_sample_outs/sample1/count/sample_filtered_feature_bc_matrix")
 print(sample_path)
 
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
 # 2. Create sparse matrix ---------------------------------------
 sparse_matrix <- Seurat::Read10X(data.dir = sample_path)
 gex <- sparse_matrix$`Gene Expression`
@@ -404,7 +407,7 @@ FeaturePlot(
 # /not sure if it will produce any good output, but lets try
 
 ## 9.1 convert to anndata (mudata) -----------
-seu_singlet <- readRDS("../RDS/seu_singlet-clustered-27nov2024.rds")
+seu_singlet <- readRDS("RDS/seu_singlet-clustered-27nov2024.rds")
 
 seu_singlet[["RNA3"]] <- as(object = seu_singlet[["RNA"]], Class = "Assay")
 DefaultAssay(seu_singlet) <- "RNA3"
@@ -464,7 +467,7 @@ DimPlot(
   seu_singlet,
   reduction = "umap",
   pt.size = 0.5,
-  group.by = "seurat_clusters",
+  group.by = c("MULTI_ID", "seurat_clusters"),
   label = TRUE
 )
 
@@ -502,7 +505,7 @@ FeaturePlot(
   label = TRUE
 ) & mycolor2
 
-# vizualize clonality
+# 10. vizualize clonality ----------------------------------------
 library(scRepertoire)
 
 tcr_sample <- read_csv("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per_sample_outs/sample1/vdj_t/filtered_contig_annotations.csv")
@@ -544,3 +547,114 @@ DimPlot(
   seu_singlet,
   group.by = "cloneSize"
 ) + scale_color_manual(values = rev(colorblind_vector[c(1, 3, 4, 5, 7)]))
+
+
+# 11. Name clusters -------------------------------------
+## copy seurat_clusters column
+seu_singlet[["my_id"]] <- seu_singlet[["seurat_clusters"]]
+Idents(seu_singlet) <- "my_id"
+seu_singlet$my_id <- plyr::mapvalues(
+  Idents(seu_singlet),
+  from = c(1:23),
+  to = c(
+    "CD8",
+    "CD4",
+    "3",
+    "CD11c myelo",
+    "5",
+    "NK",
+    "CD4",
+    "act. microglia",
+    "monocytes/neutrophils",
+    "CD8",
+    "CD4",
+    "12",
+    "CD4",
+    "CD4",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "21",
+    "22",
+    "23"
+  )
+)
+
+DimPlot(
+  seu_singlet,
+  reduction = "umap",
+  pt.size = 0.5,
+  group.by = c("MULTI_ID", "my_id"),
+  label = TRUE
+)
+colnames(seu_singlet@meta.data)
+
+# Cell cycle scoring ------------------------------
+# should be performed much earlier.
+# as i dont think i should regress out phase genes,
+# i left it here for the future (or mayby i'll change my mind)
+seu_singlet <- CellCycleScoring(
+  seu_singlet,
+  s.features = s.genes,
+  g2m.features = g2m.genes,
+  set.ident = TRUE
+)
+
+FeaturePlot(
+  seu_singlet,
+  c("S.Score", "G2M.Score"),
+  reduction = "umap",
+  label = TRUE
+)
+
+test <- RunPCA(seu_singlet, features = c(s.genes, g2m.genes))
+DimPlot(test, reduction = "pca")
+
+DimPlot(test,
+  reduction = "pca",
+  group.by = "Phase",
+  split.by = "Phase"
+)
+
+FeaturePlot(
+  seu_singlet, "percent_ribo",
+  reduction = "umap",
+  label = TRUE
+)
+
+Idents(seu_singlet) <- "my_id"
+FeaturePlot(
+  seu_singlet,
+  # c("CX3CR1", "P2RY12"),
+  # c("IL1B", "TNF", "CCL4"),
+  # c("GFAP"),
+  # c("FOLR2", "LYVE1", "MRC1", "CD206"),
+  # "CD8B",
+  # macrophages,
+  # "PDCD1",
+  # "CADM1",
+  c("TREM1", "TREM2"),
+  # c("TREM2", "SPP1"),
+  # c("CD34", "CD38", "CD123", "CD117", "CD13", "CD33", "HLA‐DR"),
+  reduction = "umap",
+  label = TRUE
+)
+
+cluster_microglia.markers <- FindMarkers(
+  seu_singlet,
+  ident.1 = "microglia",
+  min.pct = 0.25
+)
+rownames(cluster_microglia.markers)[1:30]
+
+cluster_3.markers <- FindMarkers(
+  seu_singlet,
+  ident.1 = "3",
+  min.pct = 0.25
+)
+rownames(cluster_3.markers)[1:30]
+
+saveRDS(seu_singlet, "RDS/seu_singlet-clustered-totalvi-28nov2024.rds")

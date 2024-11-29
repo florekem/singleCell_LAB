@@ -103,10 +103,58 @@ Seurat::DimPlot(
 # 3. Azimuth --------------------------------
 # not working yet!
 library(Azimuth)
-RunAzimuth()
-
-
 library(SeuratDisk)
 library(SeuratData)
 
-SaveH5Seurat(seu_singlet, "RDS/seu_singlet.h5Seurat")
+?RunAzimuth
+
+seu_singlet_azi <- RunAzimuth(seu_singlet, reference = "pbmcref")
+seu_singlet_azi_cortex <- RunAzimuth(seu_singlet, reference = "humancortexref")
+colnames(seu_singlet_azi@meta.data)
+colnames(seu_singlet_azi_cortex@meta.data)
+
+seu_singlet_azi <- NormalizeData(seu_singlet_azi)
+Idents(seu_singlet_azi) <- "predicted.celltype.l2"
+seu_singlet_azi_cortex <- NormalizeData(seu_singlet_azi_cortex)
+Idents(seu_singlet_azi_cortex) <- "predicted.celltype.l2"
+
+DimPlot(
+  seu_singlet_azi,
+  reduction = "umap",
+  pt.size = 0.5,
+  group.by = c("predicted.celltype.l2"),
+  # group.by = c("seurat_clusters", "predicted.celltype.l2"),
+  # group.by = c("seurat_clusters", "predicted.subclass"),
+  label = TRUE,
+  repel = TRUE,
+  cols = c("CD14 Mono" = "red")
+)
+# & NoLegend()
+#  & NoAxes()
+table(seu_singlet_azi@meta.data$predicted.celltype.l2)
+
+
+?DimPlot
+
+# SaveH5Seurat(seu_singlet, "RDS/seu_singlet.h5Seurat")
+
+## subset cluster 5 and 19 (brain cells)
+Idents(seu_singlet) <- "seurat_clusters"
+seu_singlet_subs <- subset(seu_singlet, idents = c("5", "19"))
+seu_singlet_subs <- RunAzimuth(seu_singlet_subs, reference = "humancortexref")
+seu_singlet_subs
+seu_singlet_subs <- NormalizeData(seu_singlet_subs)
+
+colnames(seu_singlet_subs@meta.data)
+DimPlot(
+  seu_singlet,
+  reduction = "umap",
+  pt.size = 0.5,
+  group.by = c("predicted.celltype.l2"),
+  # group.by = c("seurat_clusters", "predicted.celltype.l2"),
+  # group.by = c("seurat_clusters", "predicted.subclass"),
+  label = TRUE,
+  repel = TRUE
+)
+# & NoLegend()
+#  & NoAxes()
