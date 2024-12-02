@@ -118,7 +118,7 @@ Idents(seu_singlet_azi) <- "predicted.celltype.l2"
 seu_singlet_azi_cortex <- NormalizeData(seu_singlet_azi_cortex)
 Idents(seu_singlet_azi_cortex) <- "predicted.celltype.l2"
 
-DimPlot(
+p1 <- DimPlot(
   seu_singlet_azi,
   reduction = "umap",
   pt.size = 0.5,
@@ -127,12 +127,25 @@ DimPlot(
   # group.by = c("seurat_clusters", "predicted.subclass"),
   label = TRUE,
   repel = TRUE,
-  cols = c("CD14 Mono" = "red")
-)
-# & NoLegend()
+  # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
+  # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
+) & NoLegend()
 #  & NoAxes()
 table(seu_singlet_azi@meta.data$predicted.celltype.l2)
 
+p2 <- FeaturePlot(
+  seu_singlet,
+  # features = c("GZMB", "PRF1"),
+  # features = c("PRF1"),
+  # features = c("CD8A", "CD8B"),
+  features = c("CD8A"),
+  # features = c("CD4", "CD8A", "CCR7", "CD62L"),
+  reduction = "umap"
+) & NoLegend()
+VlnPlot(seurat_obj, features = c("CD4", "CD8A", "CCR7"), group.by = "clusters")
+
+p1 | p2
+p2
 
 ?DimPlot
 
@@ -145,16 +158,137 @@ seu_singlet_subs <- RunAzimuth(seu_singlet_subs, reference = "humancortexref")
 seu_singlet_subs
 seu_singlet_subs <- NormalizeData(seu_singlet_subs)
 
-colnames(seu_singlet_subs@meta.data)
-DimPlot(
+seu_singlet
+colnames(seu_singlet@meta.data)
+p1 <- DimPlot(
   seu_singlet,
   reduction = "umap",
   pt.size = 0.5,
-  group.by = c("predicted.celltype.l2"),
+  # group.by = c("predicted.celltype.l2"),
   # group.by = c("seurat_clusters", "predicted.celltype.l2"),
   # group.by = c("seurat_clusters", "predicted.subclass"),
+  group.by = c("predicted.id"),
   label = TRUE,
   repel = TRUE
 )
 # & NoLegend()
 #  & NoAxes()
+p1
+
+
+
+# project TILs label transfer
+seu_singlet_pTILs <- ProjecTILs.classifier(
+  query = seu_singlet,
+  ref = ref_cd8
+)
+seu_singlet_pTILs <- NormalizeData(seu_singlet_pTILs)
+
+colnames(seu_singlet@meta.data)
+colnames(seu_singlet_pTILs@meta.data)
+
+p1 <- DimPlot(
+  seu_singlet_pTILs,
+  reduction = "umap",
+  pt.size = 0.5,
+  group.by = c("functional.cluster"),
+  # group.by = c("seurat_clusters", "predicted.celltype.l2"),
+  # group.by = c("seurat_clusters", "predicted.subclass"),
+  label = TRUE,
+  repel = TRUE,
+  # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
+  # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
+)
+# & NoLegend()
+p1
+
+seu_singlet_pTILs_cd4 <- ProjecTILs.classifier(
+  query = seu_singlet,
+  ref = ref_cd4
+)
+seu_singlet_pTILs_cd4 <- NormalizeData(seu_singlet_pTILs_cd4)
+
+p2 <- DimPlot(
+  seu_singlet_pTILs_cd4,
+  reduction = "umap",
+  pt.size = 0.5,
+  group.by = c("functional.cluster"),
+  # group.by = c("seurat_clusters", "predicted.celltype.l2"),
+  # group.by = c("seurat_clusters", "predicted.subclass"),
+  label = TRUE,
+  repel = TRUE,
+  # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
+  # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
+)
+# & NoLegend()
+p2
+
+p1 | p2
+
+## DC
+ref_dc <- load.reference.map(
+  "/mnt/sda4/singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILS_DC_human_ref_v1.rds"
+)
+seu_singlet_pTILs_DC <- ProjecTILs.classifier(
+  query = seu_singlet,
+  ref = ref_dc
+)
+seu_singlet_pTILs_DC <- NormalizeData(seu_singlet_pTILs_DC)
+
+p3 <- DimPlot(
+  seu_singlet_pTILs_DC,
+  reduction = "umap",
+  pt.size = 0.5,
+  group.by = c("functional.cluster"),
+  # group.by = c("seurat_clusters", "predicted.celltype.l2"),
+  # group.by = c("seurat_clusters", "predicted.subclass"),
+  label = TRUE,
+  repel = TRUE,
+  # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
+  # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
+)
+p3
+
+## subset cluster with tumor CD8 and transfer labels from TILs
+DimPlot(
+  seu_singlet_pTILs_DC,
+  reduction = "umap",
+  pt.size = 0.5,
+  group.by = c("seurat_clusters"),
+  # group.by = c("seurat_clusters", "predicted.celltype.l2"),
+  # group.by = c("seurat_clusters", "predicted.subclass"),
+  label = TRUE,
+  repel = TRUE,
+  # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
+  # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
+)
+seu_singlet_subs_tumor_cd8 <- subset(seu_singlet, idents = c("5", "19"))
+
+plot <- FeaturePlot(
+  seu_singlet_pTILs,
+  # features = c("CD69", "CD103", "CD49a"),
+  # features = c("PD1", "CTLA4", "TIM3", "LAG3", "TIGIT"),
+  # features = c("CD28", "CD27", "IL7R"),
+  # features = c("EOMES", "TOX", "BCL6", "CXCR5"),
+  # features = c("Ki67", "PCNA", "MCM6"),
+  # features = c("TMEM119", "P2RY12", "CSF1R", "CD11b", "CD45"),
+  # features = c("CD11c", "CD80", "CD86", "MHCII", "CD40", "CLEC9A", "ITGAX"),
+  # features = c("CLEC9A", "CD40", "MHCII", "ITGAX", "CD11c", "CD80", "CD83"),
+  # features = c("CD14", "CD68", "CD11b", "CSF1R", "CD163", "MRC1", "MARCO"),
+  # features = c("CX3CR1", "TREM1", "TREM2", "P2RY12", "CSF1R", "TMEM119", "ITGAX", "CD83", "CD14"),
+  # features = c("CD8A", "CD4", "TCRB", "CD3D", "CD3E", "CD86", "ITGAX", "CD68", "CD163", "CD14", "CD11b", "ITGAE"),
+  features = "IL7R",
+  reduction = "umap",
+  label = TRUE
+)
+ggsave("plots/IL7R.png", plot)
+plot
+
+macrophage_markers <- c(
+  "HLA-DRA", "HLA-DRB1", "CD80", "CD86", "CD163", "CD14",
+  "IRF5", "NOS2", "CXCL10", "CCL2", "TGFB1", "IL1B", "IL6"
+)
+cd8_t_cell_markers <- c(
+  "CD8B", "GZMK", "GZMA", "PRF1", "IFNG", "TNF", "CD28",
+  "CD27", "IL7R", "TIGIT", "LAG3"
+)
