@@ -407,12 +407,24 @@ FeaturePlot(
 # /not sure if it will produce any good output, but lets try
 
 ## 9.1 convert to anndata (mudata) -----------
-seu_singlet <- readRDS("RDS/seu_singlet-clustered-27nov2024.rds")
+DefaultAssay(seu_singlet) <- "SCT"
 
-seu_singlet[["RNA3"]] <- as(object = seu_singlet[["RNA"]], Class = "Assay")
-DefaultAssay(seu_singlet) <- "RNA3"
-seu_singlet[["RNA"]] <- NULL
-seu_singlet <- RenameAssays(object = seu_singlet, RNA3 = "RNA")
+## for the purpose of scVI extract 3k variable genes (stored in scale.data)
+## and add it to the seurat object (TRUE/FALSE column)
+scaled_matrix <- GetAssayData(seu_singlet, layer = "scale.data", assay = "SCT")
+test <- rownames(seu_singlet) %in% rownames(scaled_matrix)
+seu_singlet <- AddMetaData(seu_singlet,
+  metadata = test,
+  col.name = "sct.var.genes"
+)
+seu_singlet@meta.data$sct.var.genes
+
+# seu_singlet <- readRDS("RDS/seu_singlet-clustered-27nov2024.rds")
+
+# seu_singlet[["RNA3"]] <- as(object = seu_singlet[["RNA"]], Class = "Assay")
+# DefaultAssay(seu_singlet) <- "RNA3"
+# seu_singlet[["RNA"]] <- NULL
+# seu_singlet <- RenameAssays(object = seu_singlet, RNA3 = "RNA")
 
 DefaultAssay(seu_singlet) <- "ADT"
 seu_singlet
@@ -420,12 +432,12 @@ adata <- convertFormat(
   seu_singlet,
   from = "seurat",
   to = "anndata",
-  # main_layer = "counts",
-  # assay  = "ADT",
-  assay = "RNA",
+  main_layer = "counts",
+  # assay  = "SCT",
+  assay = "ADT",
   drop_single_values = FALSE,
   # outFile = "RDS/test-adt.h5ad"
-  outFile = "RDS/test-rna.h5ad"
+  outFile = "RDS/scvi-adt_12-02-24.h5ad"
 )
 adata
 
