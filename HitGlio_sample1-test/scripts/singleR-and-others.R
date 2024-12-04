@@ -178,11 +178,11 @@ p1
 
 
 # project TILs label transfer
-seu_singlet_pTILs <- ProjecTILs.classifier(
+seu_singlet_pTILs_cd8 <- ProjecTILs.classifier(
   query = seu_singlet,
   ref = ref_cd8
 )
-seu_singlet_pTILs <- NormalizeData(seu_singlet_pTILs)
+seu_singlet_pTILs_cd8 <- NormalizeData(seu_singlet_pTILs)
 
 colnames(seu_singlet@meta.data)
 colnames(seu_singlet_pTILs@meta.data)

@@ -11,8 +11,8 @@ library(clustree)
 library(reticulate) # load packages required by leiden algo
 reticulate::use_condaenv("/mnt/sda4/conda/envs/R")
 library(viridis) # colors
-mycolor2 <- scale_color_viridis(option = "viridis")
 
+options(future.globals.maxSize = 2.0 * 1e9) # 2GB
 library(sceasy) # convert to anndata, scvi integration
 library(dittoSeq)
 # 1. Paths ------------------------------------------------------
@@ -24,173 +24,84 @@ print(sample_path)
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
 
-# 2. Create sparse matrix ---------------------------------------
-sparse_matrix <- Seurat::Read10X(data.dir = sample_path)
-gex <- sparse_matrix$`Gene Expression`
-adt <- sparse_matrix$`Antibody Capture`[grepl(
-  "TotalSeqC", rownames(sparse_matrix$`Antibody Capture`)
-), ]
-hto <- sparse_matrix$`Antibody Capture`[grepl(
-  "Hashtag", rownames(sparse_matrix$`Antibody Capture`)
-), ]
-rownames(hto)
-rownames(hto) <- c("tumor", "csf")
-joint_bcs <- intersect(colnames(gex), colnames(hto))
-head(joint_bcs)
+source("scripts/functions.R")
 
-gex <- gex[, joint_bcs]
-adt <- adt[, joint_bcs]
-
-hto <- as.matrix(hto[, joint_bcs])
-
-# adt <- adt[, joint_bcs]
-# ncol(adt)
-# hto <- hto[, joint_bcs]
-# ncol(hto)
-
-# 3. Create seurat object ----------------------------------------
-seu <- CreateSeuratObject(
-  counts = Matrix::Matrix(as.matrix(gex), sparse = TRUE)
-)
-
-# 4. Demux and subset singlets -----------------------------------
-seu <- NormalizeData(seu)
-seu <- FindVariableFeatures(seu, selection.method = "mean.var.plot")
-seu <- ScaleData(seu, features = VariableFeatures(seu))
-
-## 4.1. Add HTO data as a new assay independent from RNA ----
-seu[["HTO"]] <- CreateAssayObject(counts = hto)
-seu[["ADT"]] <- CreateAssayObject(counts = adt)
-
-## 4.2. Normalize HTO data, with centered log-ratio (CLR) transformation ----
-seu <- NormalizeData(seu, assay = "HTO", normalization.method = "CLR")
-
-seu_demux <- MULTIseqDemux(
-  seu,
-  assay = "HTO",
-  quantile = 0.7,
-  autoThresh = TRUE,
-  maxiter = 5,
-  qrange = seq(from = 0.1, to = 0.9, by = 0.05),
-  verbose = TRUE
-)
-table(seu_demux$MULTI_ID)
-table(seu_demux$MULTI_classification)
-
+# Podejscie 1
+seu <- initial_steps(sample_path)
+seu_demux <- initial_demux(seu)
 Idents(seu_demux) <- "MULTI_ID"
+
 VlnPlot(seu_demux, features = "nCount_RNA", pt.size = 0.1, log = TRUE)
 
-RidgePlot(
-  seu_demux,
-  assay = "HTO",
-  features = rownames(seu_demux[["HTO"]])[1:2],
-  ncol = 3
-)
-
-colnames(seu_demux@meta.data)
-
-## 4.3 subset singlet only ----
+# head(seu_demux@meta.data)
+# seu_singlet <- seu_subset(
+#   seu_demux,
+#   idents = c("tumor", "csf")
+# )
 seu_singlet <- subset(seu_demux, idents = c("tumor", "csf"))
+
 head(seu_singlet@meta.data)
 
-### 4.3.1 separ. subset csf and tumor singlets (for tcr analysis) -------
-seu_singlet_csf <- subset(seu_singlet, subset = MULTI_ID == "csf")
-seu_singlet_tumor <- subset(seu_singlet, subset = MULTI_ID == "tumor")
+### subset csf and tumor singlets (for tcr analysis) -------
+seu_singlet_csf <- seu_subset(
+  seu_singlet,
+  subset = MULTI_ID == "csf"
+)
+seu_singlet_tumor <- seu_subset(
+  seu_singlet,
+  subset = MULTI_ID == "tumor"
+)
 # /now this goes to the script where tcr data in analyzed/
 
-# 5. Quality filter cells ----------------------------------------
-## 5.1. Add quality features -------
-### 5.1.1. Ribosomal --------------
-seu_singlet <- PercentageFeatureSet(
-  seu_singlet,
-  pattern = "^RP[SL]",
-  col.name = "percent_ribo"
-)
-### 5.1.2. Mitochondrial --------
-seu_singlet <- PercentageFeatureSet(
-  seu_singlet,
-  pattern = "^MT-",
-  col.name = "percent_mito"
-)
-### 5.1.3. Hemoglobin -------
-seu_singlet <- PercentageFeatureSet(
-  seu_singlet,
-  pattern = "^HB[^(P)]",
-  col.name = "percent_hemoglob"
-)
-### 5.1.4. log10 genes per umi ------------------
-seu_singlet[["log10GenesPerUmi"]] <-
-  log10(seu_singlet$nFeature_RNA) / log10(seu_singlet$nCount_RNA)
+seu_singlet <- add_quality_features(seu_singlet)
+colnames(seu_singlet@meta.data)
 
-## 5.2. Visualize quality features before filtering ---------------
-Seurat::VlnPlot(
+# może warto by wyczyścić scale.data, żeby nie wyświetlało warning?
+# temp. bo nie bede potrzebowal tego pozniej
+seu_singlet_q_filt_temp <- seu_normalize_var_scale_pca(
   seu_singlet,
-  features = c(
-    "nCount_RNA",
-    "nFeature_RNA",
-    "percent_mito",
-    "percent_ribo",
-    "percent_hemoglob"
-  )
+  normalize = "log",
+  cluster.name = "cluster.log",
+  reduction = "pca",
+  reduction.name = "umap.log",
+  dims = 1:30,
+  k.param = 20,
+  algorithm = 4,
+  resolution = 0.5,
+  group.singletons = TRUE
 )
-## 5.3. Check how clusters looks like before quality filtering ----------
-DefaultAssay(seu_singlet) <- "RNA"
-seu_singlet <- NormalizeData(seu_singlet)
-seu_singlet <- FindVariableFeatures(seu_singlet)
-seu_singlet <- ScaleData(seu_singlet)
-seu_singlet <- RunPCA(seu_singlet)
-ElbowPlot(seu_singlet, ndims = 40)
+seu_singlet_q_filt_temp
 
-seu_singlet <- FindNeighbors(
-  seu_singlet,
-  reduction = "pca", dims = 1:30
-)
-seu_singlet <- FindClusters(
-  seu_singlet,
-  algorithm = 4, # leiden
-  resolution = 0.5, verbose = FALSE
-)
-seu_singlet <- RunUMAP(
-  seu_singlet,
-  reduction = "pca", dims = 1:30
+ElbowPlot(seu, ndims = 40)
+
+## Visualize clusters and features before quality filtering ------------------
+q_features <- c(
+  "nCount_RNA",
+  "nFeature_RNA",
+  "percent_mito",
+  "percent_ribo",
+  "percent_hemoglob"
 )
 
-### 5.4. Visualize cluster before quality filtering ------------------
-DimPlot(
-  seu_singlet,
-  group.by = "MULTI_ID", reduction = "umap"
+p2 <- seu_DimPlot(
+  seu_singlet_q_filt_temp,
+  group.by = "MULTI_ID",
+  reduction = "umap"
 )
-FeaturePlot(
-  seu_singlet, "percent_mito",
-  reduction = "umap",
-  label = TRUE
+
+p3 <- seu_FeaturePlot(
+  seu_singlet_q_filt_temp,
+  q_features,
+  reduction = "umap"
 )
-FeaturePlot(
-  seu_singlet, "log10GenesPerUmi",
-  reduction = "umap",
-  label = TRUE
+
+p4 <- violin_plot(
+  seu_singlet_q_filt_temp,
+  features = q_features
 )
-FeaturePlot(
-  seu_singlet, "percent_ribo",
-  reduction = "umap",
-  label = TRUE
-)
-FeaturePlot(
-  seu_singlet, "percent_hemoglob",
-  reduction = "umap",
-  label = TRUE
-)
-Seurat::VlnPlot(
-  seu_singlet,
-  features = c(
-    "nCount_RNA",
-    "nFeature_RNA",
-    "percent_mito",
-    "percent_ribo",
-    "percent_hemoglob"
-  )
-)
+
 ## 5.5. Subset cells based on quality assesment -------------
+# subset juz oryginalnego singlet
 seu_singlet <- subset(
   seu_singlet,
   subset = nFeature_RNA > 200 &
@@ -202,145 +113,50 @@ seu_singlet <- subset(
 seu_singlet
 
 # 6. Recluster after quality subsetting --------------------------------
-seu_singlet <- NormalizeData(seu_singlet)
-seu_singlet <- FindVariableFeatures(seu_singlet)
-seu_singlet <- ScaleData(seu_singlet)
-seu_singlet <- RunPCA(seu_singlet)
-ElbowPlot(seu_singlet, ndims = 40)
+seu_singlet_q_filt_temp <- seu_normalize_var_scale_pca(
+  seu_singlet,
+  normalize = "log",
+  cluster.name = "cluster.log",
+  reduction = "pca",
+  reduction.name = "umap.log",
+  dims = 1:30,
+  k.param = 20,
+  algorithm = 4,
+  resolution = 0.5,
+  group.singletons = TRUE
+)
 
-seu_singlet <- FindNeighbors(
+seu_singlet <- NormalizeData(
   seu_singlet,
-  reduction = "pca", dims = 1:30
+  assay = "ADT",
+  normalization.method = "CLR"
 )
-seu_singlet <- FindClusters(
-  seu_singlet,
-  resolution = 0.5, verbose = FALSE,
-  algorithm = 4
-)
-seu_singlet <- RunUMAP(
-  seu_singlet,
-  reduction = "pca", dims = 1:30
-)
+
 
 ## 6.1 Save RDS after quality filtering -------------------------------
 saveRDS(seu_singlet, "RDS/seu_singlet_after-filtering.rds")
 
 ## 6.2. Vizualize clusters and quality features after quality filtiring -----
-DimPlot(
-  seu_singlet,
-  group.by = "MULTI_ID", reduction = "umap",
-  label = TRUE
-)
-DimPlot(
-  seu_singlet,
-  group.by = "seurat_clusters", reduction = "umap",
-  label = TRUE
-)
-FeaturePlot(
-  seu_singlet, "percent_mito",
-  reduction = "umap",
-  label = TRUE
-)
-FeaturePlot( # w/o explicit removal of low umis, this parameter improoveed
-  seu_singlet, "log10GenesPerUmi",
-  reduction = "umap",
-  label = TRUE
-)
-FeaturePlot(
-  seu_singlet, "percent_ribo",
-  reduction = "umap",
-  label = TRUE
-)
-FeaturePlot(
-  seu_singlet, "percent_hemoglob",
-  reduction = "umap",
-  label = TRUE
-)
-Seurat::VlnPlot(
-  seu_singlet,
-  features = c(
-    "nCount_RNA",
-    "nFeature_RNA",
-    "percent_mito",
-    "percent_ribo",
-    "percent_hemoglob"
-  )
-)
 
 # 7. Use SCT transform (replace 6.) ------------
-options(future.globals.maxSize = 2.0 * 1e9) # 2GB
-?SCTransform
-seu_singlet <- SCTransform(
+seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
-  verbose = FALSE
-)
-
-DefaultAssay(seu_singlet) <- "SCT"
-
-seu_singlet <- RunPCA(seu_singlet)
-ElbowPlot(seu_singlet, ndims = 40)
-
-dims <- 1:20
-seu_singlet <- FindNeighbors(
-  seu_singlet,
-  reduction = "pca", dims = dims,
-  k.param = 30
-)
-seu_singlet <- FindClusters(
-  seu_singlet,
-  resolution = 0.8, verbose = FALSE,
-  algorithm = 4, # leiden
+  normalize = "sct",
+  cluster.name = "cluster.sct",
+  pca.reduction.name = "pca.sct",
+  umap.reduction.name = "umap.sct",
+  dims = 1:30,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.5,
   group.singletons = FALSE
 )
-seu_singlet <- RunUMAP(
+seu_singlet
+?RunPCA
+seu_singlet <- NormalizeData(
   seu_singlet,
-  reduction = "pca", dims = dims
-)
-
-## 7.1. Vizualize clusters and quality features after quality filtiring ------
-table(Idents(seu_singlet))
-
-DimPlot(
-  seu_singlet,
-  group.by = "MULTI_ID", reduction = "umap",
-  label = TRUE
-)
-DimPlot(
-  seu_singlet,
-  group.by = c("MULTI_ID", "seurat_clusters"),
-  reduction = "umap",
-  label = TRUE
-)
-FeaturePlot(
-  seu_singlet, "percent_mito",
-  reduction = "umap",
-  label = TRUE
-)
-FeaturePlot( # w/o explicit removal of low umis, this parameter improoveed
-  seu_singlet, "log10GenesPerUmi",
-  reduction = "umap",
-  label = TRUE
-)
-FeaturePlot(
-  seu_singlet, "percent_ribo",
-  reduction = "umap",
-  label = TRUE
-)
-FeaturePlot(
-  seu_singlet, "percent_hemoglob",
-  reduction = "umap",
-  label = TRUE
-)
-Seurat::VlnPlot(
-  seu_singlet,
-  features = c(
-    "nCount_RNA",
-    "nFeature_RNA",
-    "percent_mito",
-    "percent_ribo",
-    "percent_hemoglob",
-    "log10GenesPerUmi"
-  )
+  assay = "ADT",
+  normalization.method = "CLR"
 )
 
 ## 7.3 Save RDS of clustered singlets
@@ -350,36 +166,28 @@ seu_singlet
 # 8. Visualize GEX and ADT features ---------
 ## 8.1 GEX ----------------
 DefaultAssay(seu_singlet) <- "SCT"
+inferno <- viridis::scale_color_viridis(option = "inferno")
 
-active_gex <- f5
-cutoff <- NA
-
-FeaturePlot(
+vars <- c("CD8A", "CD4")
+seu_FeaturePlot(
   seu_singlet,
-  active_gex,
-  max.cutoff = cutoff
-) & mycolor2
-?FeaturePlot
+  assay = "SCT",
+  features = vars,
+  reduction = "umap.sct",
+  color = inferno,
+  max.cutoff = NA,
+  show = TRUE,
+  save_path = FALSE
+)
+seu_FeaturePlot(seu_singlet, "SCT", vars)
 
-ditto_group_by <- "MULTI_ID"
-ditto_group_by <- "seurat_clusters"
-dittoSeq::dittoDotPlot(
+seu_dittoDotPlot(
   seu_singlet,
-  vars = active_gex,
-  group.by = ditto_group_by
+  vars = vars,
+  group.by = "seurat_clusters"
 )
 
-## 8.2. ADT -------------
-DefaultAssay(seu_singlet) <- "ADT"
-DefaultAssay(seu_singlet)
-
-seu_singlet <- NormalizeData(
-  seu_singlet,
-  assay = "ADT",
-  normalization.method = "CLR"
-)
-
-
+## ADT -------------
 features <- Features(seu_singlet)
 length(features)
 f1 <- features[1:10]
@@ -387,21 +195,13 @@ f2 <- features[11:21]
 f3 <- features[22:32]
 f4 <- features[33:42]
 
-p1 <- FeaturePlot(
-  seu_singlet, f4,
-  # max.cutoff = 2,
-  label = TRUE
-) & mycolor2
-p1
-ggsave("plots/totalvi-p4.png", p1)
+seu_FeaturePlot(
+  seu_singlet, "ADT",
+  reduction = "umap.sct",
+  color = inferno,
+  "TotalSeqC-CD4"
+)
 
-saveRDS()
-
-FeaturePlot(
-  seu_singlet, "TotalSeqC-CD25",
-  # max.cutoff = 4,
-  label = TRUE
-) & mycolor2
 
 # 9. totalVI model training ------------------
 # /not sure if it will produce any good output, but lets try
@@ -442,10 +242,11 @@ adata <- convertFormat(
 adata
 
 ## go to python, and bring back latent.csv
-latent <- read.csv("RDS/latent-totalVI.csv")
+latent <- read.csv("RDS/latent-sct-totalVI_12-02-24.csv")
 latent_mtx <- as.matrix(latent)
 rownames(latent_mtx) <- colnames(seu_singlet)
 latent_mtx <- latent_mtx[, -1] # remove 1st col
+dim(latent_mtx)
 colnames(latent_mtx) <- paste0("totalvi_", 1:20)
 colnames(latent_mtx)
 
@@ -458,23 +259,21 @@ seu_singlet[["totalvi"]] <- CreateDimReducObject(
   key = "totalvi_",
   assay = DefaultAssay(seu_singlet)
 )
-
-seu_singlet <- FindNeighbors(
+seu_singlet
+seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
-  dims = 1:20,
-  reduction = "totalvi"
-)
-seu_singlet <- FindClusters(
-  seu_singlet,
-  resolution = 0.5,
-  algorithm = 4
-)
-seu_singlet <- RunUMAP(
-  seu_singlet,
-  dims = 1:20,
+  normalize = FALSE,
+  cluste.name = "cluster.totalvi",
   reduction = "totalvi",
-  # n.components = 2
+  reduction.name = "umap.totalvi",
+  dims = 1:20,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.8,
+  group.singletons = FALSE
 )
+
+# VIZ. OF scVI data
 DimPlot(
   seu_singlet,
   reduction = "umap",
@@ -645,13 +444,13 @@ FeaturePlot(
   # c("GFAP"),
   # c("FOLR2", "LYVE1", "MRC1", "CD206"),
   # "CD8B",
-  # macrophages,
+  tcels,
   # "PDCD1",
   # "CADM1",
   # c("TREM1", "TREM2"),
   # c("p53", "ATM", "CHEK2"),
   # c("HIF1A"),
-  c("BAX", "CASP3", "FAS"),
+  # c("BAX", "CASP3", "FAS"),
   # c("MICA", "MICB"),
   # c("TREM2", "SPP1"),
   # c("CD34", "CD38", "CD123", "CD117", "CD13", "CD33", "HLA‐DR"),

@@ -76,7 +76,7 @@ DimPlot(
 
 # CD4 together
 ref_cd4 <- load.reference.map(
-  "singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd4t.rds"
+  "/mnt/sda4/singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd4t.rds"
 )
 
 seu_tcr4 <- Run.ProjecTILs(
@@ -104,7 +104,7 @@ colnames(seu_singlet_tcr@meta.data)
 
 # CD8 together
 ref_cd8 <- load.reference.map(
-  "singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd8t.rds"
+  "/mnt/sda4/singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd8t.rds"
 )
 
 seu_tcr8 <- Run.ProjecTILs(
