@@ -101,7 +101,6 @@ Seurat::DimPlot(
 )
 
 # 3. Azimuth --------------------------------
-# not working yet!
 library(Azimuth)
 library(SeuratDisk)
 library(SeuratData)
@@ -118,18 +117,32 @@ Idents(seu_singlet_azi) <- "predicted.celltype.l2"
 seu_singlet_azi_cortex <- NormalizeData(seu_singlet_azi_cortex)
 Idents(seu_singlet_azi_cortex) <- "predicted.celltype.l2"
 
-p1 <- DimPlot(
+seu_DimPlot(
   seu_singlet_azi,
-  reduction = "umap",
-  pt.size = 0.5,
+  reduction = "umap.sct",
   group.by = c("predicted.celltype.l2"),
-  # group.by = c("seurat_clusters", "predicted.celltype.l2"),
-  # group.by = c("seurat_clusters", "predicted.subclass"),
-  label = TRUE,
-  repel = TRUE,
-  # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
-  # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
-) & NoLegend()
+  show = FALSE,
+  save_path = "plots/scv-500-doublets/PBMCref",
+  ggheight = NA,
+  ggwidth = NA
+)
+
+# p1 <- DimPlot(
+#   seu_singlet_azi,
+#   # reduction = "umap.totalvi.sct",
+#   reduction = "umap.sct",
+#   pt.size = 0.5,
+#   group.by = c("predicted.celltype.l2"),
+#   # group.by = c("MULTI_ID", "predicted.celltype.l2"),
+#   # group.by = c("seurat_clusters", "predicted.subclass"),
+#   label = TRUE,
+#   repel = TRUE,
+#   # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
+#   # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
+#   # cols = c("CD14 Mono" = "red", "CD16 Mono" = "blue")
+# )
+p1
+# & NoLegend()
 #  & NoAxes()
 table(seu_singlet_azi@meta.data$predicted.celltype.l2)
 
@@ -178,52 +191,44 @@ p1
 
 
 # project TILs label transfer
-seu_singlet_pTILs_cd8 <- ProjecTILs.classifier(
+library(ProjecTILs)
+
+ref_cd8 <- load.reference.map(
+  "/mnt/sda4/singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd8t.rds"
+)
+
+DefaultAssay(seu_singlet) <- "SCT"
+seu_singlet_cd8 <- ProjecTILs.classifier(
   query = seu_singlet,
   ref = ref_cd8
 )
-seu_singlet_pTILs_cd8 <- NormalizeData(seu_singlet_pTILs)
+# seu_singlet_pTILs_cd8 <- NormalizeData(seu_singlet_pTILs)
 
 colnames(seu_singlet@meta.data)
-colnames(seu_singlet_pTILs@meta.data)
+colnames(seu_singlet_cd8@meta.data)
 
-p1 <- DimPlot(
-  seu_singlet_pTILs,
-  reduction = "umap",
-  pt.size = 0.5,
+seu_DimPlot(
+  seu_singlet_pTILs_cd4,
+  reduction = "umap.sct",
   group.by = c("functional.cluster"),
-  # group.by = c("seurat_clusters", "predicted.celltype.l2"),
-  # group.by = c("seurat_clusters", "predicted.subclass"),
-  label = TRUE,
-  repel = TRUE,
-  # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
-  # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
+  show = FALSE,
+  save_path = "plots/scv-500-doublets/TILs_cd4",
+  ggheight = NA,
+  ggwidth = NA
 )
+# cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
+# cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
 # & NoLegend()
-p1
 
+ref_cd4 <- load.reference.map(
+  "/mnt/sda4/singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd4t.rds"
+)
 seu_singlet_pTILs_cd4 <- ProjecTILs.classifier(
   query = seu_singlet,
   ref = ref_cd4
 )
-seu_singlet_pTILs_cd4 <- NormalizeData(seu_singlet_pTILs_cd4)
+# seu_singlet_pTILs_cd4 <- NormalizeData(seu_singlet_pTILs_cd4)
 
-p2 <- DimPlot(
-  seu_singlet_pTILs_cd4,
-  reduction = "umap",
-  pt.size = 0.5,
-  group.by = c("functional.cluster"),
-  # group.by = c("seurat_clusters", "predicted.celltype.l2"),
-  # group.by = c("seurat_clusters", "predicted.subclass"),
-  label = TRUE,
-  repel = TRUE,
-  # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
-  # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
-)
-# & NoLegend()
-p2
-
-p1 | p2
 
 ## DC
 ref_dc <- load.reference.map(

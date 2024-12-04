@@ -92,7 +92,7 @@ seu_violin_plot <- function(seu, features) {
 }
 
 seu_normalize_var_scale_pca <- function(
-    seu, normalize, dims, pca.reduction.name, k.param = 20,
+    seu, normalize, run_pca = TRUE, dims, pca.reduction.name, k.param = 20,
     cluster.name, umap.reduction.name, algorithm, resolution,
     group.singletons = TRUE) {
   if (normalize == "log") {
@@ -108,10 +108,14 @@ seu_normalize_var_scale_pca <- function(
   if (normalize == FALSE) {
     print("Running WITHOUT Normalization")
   }
-  seu <- Seurat::RunPCA(
-    seu,
-    reduction.name = pca.reduction.name
-  )
+  if (run_pca == TRUE) {
+    seu <- Seurat::RunPCA(
+      seu,
+      reduction.name = pca.reduction.name
+    )
+  } else {
+    print("NOT RUNNING PCA!") # in case other dim. reductions such as scVI
+  }
   seu <- Seurat::FindNeighbors(
     seu,
     reduction = pca.reduction.name,
@@ -136,17 +140,27 @@ seu_normalize_var_scale_pca <- function(
 ?FindClusters
 ?RunUMAP
 
-seu_DimPlot <- function(seu, group.by, reduction) {
-  DimPlot(
+seu_DimPlot <- function(
+    seu, group.by, reduction,
+    show = TRUE, save_path = FALSE, ggwidth = NA, ggheight = NA) {
+  plot <- Seurat::DimPlot(
     seu,
     group.by = group.by,
-    reduction = reduction
+    reduction = reduction,
+    label = TRUE,
+    repel = TRUE
   )
+  if (save_path != FALSE) {
+    ggplot2::ggsave(paste0(save_path, ".png"), plot, width = ggwidth, height = ggheight)
+  }
+  if (show == TRUE) {
+    return(plot)
+  }
 }
-
 seu_FeaturePlot <- function(
-    seu, assay, features, reduction = "umap", label = TRUE,
-    max.cutoff = NA, color = mycolor2, save_path = FALSE, show = TRUE) {
+    seu, assay, features, reduction, label = TRUE,
+    max.cutoff = NA, color = mycolor2, save_path = FALSE, show = TRUE,
+    ggwidth = NA, ggheight = NA) {
   Seurat::DefaultAssay(seu) <- assay
 
   plot <- Seurat::FeaturePlot(
@@ -157,7 +171,7 @@ seu_FeaturePlot <- function(
     max.cutoff = max.cutoff
   ) & color
   if (save_path != FALSE) {
-    ggplot2::ggsave(paste0(save_path, ".png"), plot)
+    ggplot2::ggsave(paste0(save_path, ".png"), plot, width = ggwidth, height = ggheight)
   }
   if (show == TRUE) {
     return(plot)

@@ -17,3 +17,28 @@ mes_like <- c("VIM", "S100A10", "TIMP1", "GAP43", "CLU", "S100A6", "TAGLN2", "TM
 oligoden <- c("MBP", "TF", "PLP1", "MAG", "MOG", "CLDN11")
 tcels <- c("CD2", "CD3D", "CD3E", "CD3G")
 macrophages <- c("CD14", "AIF1", "FCER1G", "FCGR3A", "TYROBP", "CSF1R")
+t_cell_markers <- c(
+  "CD3D", "CD3E", "CD3G", "CD4", "CD8A", "CD8B",
+  "TRAC", "TRBC1", "TRBC2", "IL7R", "FOXP3",
+  "CD25", "CD69", "CD28", "CTLA4", "PDCD1",
+  "CCR7", "SELL", "GZMB", "PRF1", "IFNG"
+)
+
+ein_like <- c(
+  "MEG3", "STMN2", "DLX6-AS1", "RTN1", "TUBB3", "GAD1", "NSG1", "UCHL1", "PLS3",
+  "RUNX1T1", "DLX5", "NRXN3", "MAP1B", "TMSB10", "ARL4D", "STMN4", "CADM1",
+  "ERBB4", "DLX6", "FAM65B", "MIAT", "LMO3", "SLAIN1", "TPGS2", "BCL11A",
+  "CACNA2D3", "NCAM1", "GNG2", "AC017053.1", "CRMP1", "GAP43", "ATCAY",
+  "TP53I11", "PLK2", "WLS", "RP11-87N24.3", "RNF24", "STXBP1", "MYCBP2",
+  "EPHA3", "MEIS2", "TMSB15A", "ENO2", "LMBR1L", "NSG2", "GPD1", "SCAPER",
+  "CELF4", "KLF7", "TMEM123"
+)
+inpc_like <- c(
+  "MFNG", "TAC3", "INPPL1", "BEST3", "DLL1", "CALCOCO1", "CBFA2T2", "HDAC9", "RGS8",
+  "RP11-87N24.3", "DLL3", "RP11-118F19.1", "FTX", "JAG1", "TCF12", "ENC1",
+  "ARHGEF2", "TMEM2", "MAP6", "ITFG1", "LAMA5", "COPA", "ANGPTL2", "AKNAD1",
+  "LAMP5", "DLGAP1", "DLG2", "BOC", "KAT7", "KIAA0195", "EIF2A", "HIST1H2AC",
+  "NPY", "GLYCTK", "FAM60A", "SS18", "RGS16", "GPR56", "LIMD1", "CNTN2",
+  "JAM3", "CORO7", "QARS", "AC013402.2", "CDK5RAP1", "ARHGAP21", "ACADVL",
+  "THOC1", "ADAM10", "PXDN"
+)
