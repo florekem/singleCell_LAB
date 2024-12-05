@@ -157,7 +157,7 @@ seu_singlet_temp <- DoubletFinder::doubletFinder(
   PCs = 1:10,
   pN = 0.25,
   pK = 0.09,
-  nExp = nExp_poi.adj,
+  nExp = nExp_poi_adj,
   reuse.pANN = FALSE,
   sct = TRUE
 )
@@ -178,33 +178,41 @@ seu_singlet <- seu_normalize_var_scale_pca(
   cluster.name = "cluster.sct",
   pca.reduction.name = "pca.sct",
   umap.reduction.name = "umap.sct",
-  dims = 1:30, # change to 10 in case of removing doublets
-  k.param = 20,
+  dims = 1:20,
+  k.param = 40,
   algorithm = 4,
-  resolution = 0.8,
+  resolution = 0.1,
   group.singletons = TRUE
 )
+seu_singlet <- NormalizeData(
+  seu_singlet,
+  assay = "ADT",
+  normalization.method = "CLR"
+)
+seu_singlet
 
-saveRDS(seu_singlet, "RDS/seu_singlet_sct-doublet-500_05dec24.rds")
+# saveRDS(seu_singlet, "RDS/seu_singlet_sct-doublet-500_05dec24.rds")
 
 # 8. totalVI model training of doublet-removed seu_singlet ------------------
 DefaultAssay(seu_singlet) <- "SCT"
 
 ## /for the purpose of scVI extract 3k variable genes (stored in scale.data)
 ## /and add it to the seurat object (TRUE/FALSE column)
-scaled_matrix <- GetAssayData(seu_singlet, layer = "scale.data", assay = "SCT")
-test <- rownames(seu_singlet) %in% rownames(scaled_matrix)
-seu_singlet <- AddMetaData(seu_singlet,
-  metadata = test,
-  col.name = "sct.var.genes"
-)
-seu_singlet@meta.data$sct.var.genes
+## / ! this code is not working
+# scaled_matrix <- GetAssayData(seu_singlet, layer = "scale.data", assay = "SCT")
+# test <- rownames(seu_singlet) %in% rownames(scaled_matrix)
+# seu_singlet <- AddMetaData(seu_singlet,
+#   metadata = test,
+#   col.name = "sct.var.genes"
+# )
+# seu_singlet@meta.data$sct.var.genes
 
-sct_vst_counts <- seu_singlet[["SCT"]]@data
-variable_features <- VariableFeatures(seu_singlet)
-variable_features
-vst_counts_variable <- sct_vst_counts[variable_features, ]
-dim(vst_counts_variable)
+# / trying to success, with chat (no success)
+# sct_vst_counts <- seu_singlet[["SCT"]]@data
+# variable_features <- VariableFeatures(seu_singlet)
+# variable_features
+# vst_counts_variable <- sct_vst_counts[variable_features, ]
+# dim(vst_counts_variable)
 
 # v3 problem, not relevant to SCT normalization ---------------
 # seu_singlet <- readRDS("RDS/seu_singlet-clustered-27nov2024.rds")
@@ -213,6 +221,7 @@ dim(vst_counts_variable)
 # seu_singlet[["RNA"]] <- NULL
 # seu_singlet <- RenameAssays(object = seu_singlet, RNA3 = "RNA")
 
+# ! / using all genes for now, as I don't know how to exctract info for sct
 seu_singlet
 adata <- convertFormat(
   seu_singlet,
@@ -226,8 +235,8 @@ adata <- convertFormat(
 )
 adata
 
-# go to python, and bring back latent.csv --------------------
-latent <- read.csv("")
+# Go to python, and bring back latent.csv --------------------
+latent <- read.csv("latents/latent-sct-totalVI_05dec24_wo-int-doublet-500.csv")
 
 latent_mtx <- as.matrix(latent)
 rownames(latent_mtx) <- colnames(seu_singlet)
@@ -246,11 +255,9 @@ seu_singlet[["totalvi.sct"]] <- CreateDimReducObject(
   assay = DefaultAssay(seu_singlet)
 )
 seu_singlet
-
-seu_singlet
 colnames(seu_singlet@meta.data)
 
-# clustering po dodaniu latent -------------------------
+# 9. clustering po dodaniu latent -------------------------
 # / nie normalizuje bo nie trzeba i nie robie pca poniewaz używam totalvi
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
@@ -260,13 +267,13 @@ seu_singlet <- seu_normalize_var_scale_pca(
   pca.reduction.name = "totalvi.sct", # instead of pca
   umap.reduction.name = "umap.totalvi.sct",
   dims = 1:20,
-  k.param = 30,
+  k.param = 20,
   algorithm = 4,
-  resolution = 0.1,
+  resolution = 0.8,
   group.singletons = FALSE
 )
 
-# 8. Vizualize GEX features after initial SCT clustering ---------
+# 10. Vizualize GEX features after totalVI latent SCT clustering ---------
 DefaultAssay(seu_singlet) <- "SCT"
 inferno <- viridis::scale_color_viridis(option = "inferno")
 
@@ -274,25 +281,28 @@ vars <- t_cell_markers
 vars <- macrophages
 vars <- ein_like
 vars <- inpc_like
-vars <- c("CD8A", "CD4")
+vars <- c("CD8A", "CD8B")
 seu_FeaturePlot(
   seu_singlet,
   assay = "SCT",
   features = vars,
+  # reduction = "umap.totalvi.sct",
   reduction = "umap.sct",
   color = inferno,
   max.cutoff = NA,
-  show = FALSE,
-  save_path = "plots/scv-500-doublets/inpc-like_markers",
-  ggheight = 30,
-  ggwidth = 30
+  show = TRUE,
+  # save_path = "plots/scv-500-doublets/inpc-like_markers",
+  # ggheight = 30,
+  # ggwidth = 30
 )
 seu_DimPlot(
   seu_singlet,
+  # reduction = "umap.totalvi.sct",
   reduction = "umap.sct",
+  # group.by = c("MULTI_ID", "cluster.totalvi"),
   group.by = c("MULTI_ID", "cluster.sct"),
-  show = FALSE,
-  save_path = "plots/clusters",
+  show = TRUE,
+  # save_path = "plots/clusters",
   ggheight = NA,
   ggwidth = NA
 )
@@ -301,7 +311,7 @@ seu_dittoDotPlot(
   vars = vars,
   group.by = "seurat_clusters"
 )
-# 9. Vizualize ADT features -------------
+# 11. Vizualize ADT features -------------
 DefaultAssay(seu_singlet) <- "ADT"
 features <- Features(seu_singlet)
 length(features)
@@ -310,130 +320,117 @@ f2 <- features[11:21]
 f3 <- features[22:32]
 f4 <- features[33:42]
 
+adt_features <- c("TotalSeqC-CD8")
 seu_FeaturePlot(
   seu_singlet, "ADT",
+  # reduction = "umap.totalvi.sct",
   reduction = "umap.sct",
   color = inferno,
-  features = f4,
+  features = adt_features,
   max.cutoff = NA,
-  show = FALSE,
-  save_path = "plots/scv-500-doublets/adt-panel_4",
+  show = TRUE,
+  # save_path = "plots/scv-500-doublets/adt-panel_4",
   ggheight = NA,
   ggwidth = NA
 )
 
-
-
-
-# VIZ. OF scVI data
-colnames(seu_singlet@meta.data)
-seu_DimPlot(
-  seu_singlet,
-  reduction = "umap.totalvi.sct",
-  group.by = c("MULTI_ID", "cluster.totalvi"),
-  show = FALSE,
-  save_path = "plots/temp",
-  ggheight = NA,
-  ggwidth = NA
-)
-
-sct_vars <- c("CD8A", "CD4")
-sct_vars <- c("CD103", "CD69") # https://www.nature.com/articles/s41467-018-07053-9
-sct_vars <- c("CTLA4")
-sct_vars <- t_cell_markers
-sct_vars <- c("TREM1", "TREM2")
-seu_FeaturePlot(
-  seu_singlet,
-  assay = "SCT",
-  features = sct_vars,
-  # reduction = "umap.sct",
-  reduction = "umap.totalvi.sct",
-  color = inferno,
-  max.cutoff = NA,
-  show = FALSE,
-  save_path = "plots/temp",
-  ggwidth = NA,
-  ggheight = NA
-)
-adt_vars <- features
-seu_FeaturePlot(
-  seu_singlet,
-  assay = "ADT",
-  features = f4,
-  reduction = "umap.sct",
-  # reduction = "umap.totalvi_int.sct",
-  color = inferno,
-  max.cutoff = NA,
-  show = FALSE,
-  save_path = "plots/sct_500/adt-panel_4"
-)
-
-# subset myeloid cluster to filter out cd8 cells -------------------
-Idents(seu_singlet) <- "cluster.totalvi"
+# 12. subset myeloid cluster to filter out cd8 cells -------------------
+Idents(seu_singlet) <- "cluster.sct"
 Idents(seu_singlet)
 
-seu_singlet_myelo <- subset(seu_singlet, idents = c(2, 8))
+seu_singlet_myelo <- subset(seu_singlet, idents = c(2, 5))
 
+# this time PCA (rerun with only myelo) is much better, dunno
 seu_singlet_myelo <- seu_normalize_var_scale_pca(
   seu_singlet_myelo,
   normalize = "sct",
-  cluster.name = "cluster.totalvi.myelo",
-  run_pca = FALSE, # not runnign pca, changing clusters in totalvi reduction
-  pca.reduction.name = "totalvi.sct", # instead of pca
-  umap.reduction.name = "umap.totalvi.sct",
-  dims = 1:20,
-  k.param = 20,
+  cluster.name = "cluster.pca.myelo",
+  run_pca = TRUE,
+  pca.reduction.name = "pca.sct",
+  umap.reduction.name = "umap.pca.sct",
+  dims = 1:5,
+  k.param = 10,
   algorithm = 4,
-  resolution = 0.8,
+  resolution = 0.4,
   group.singletons = FALSE
 )
 seu_DimPlot(
   seu_singlet_myelo,
-  reduction = "umap.totalvi.sct",
-  group.by = c("cluster.totalvi.myelo"),
-  show = FALSE,
-  save_path = "plots/temp",
+  reduction = "umap.pca.sct",
+  group.by = c("cluster.pca.myelo"),
+  show = TRUE,
+  # save_path = "plots/temp",
   ggheight = NA,
   ggwidth = NA
 )
 seu_FeaturePlot(
   seu_singlet_myelo,
   assay = "SCT",
-  features = "CD8A",
-  reduction = "umap.totalvi.sct",
+  features = c("CD8A", "CD8B"),
+  reduction = "umap.pca.sct",
   color = inferno,
   max.cutoff = NA,
-  show = FALSE,
-  save_path = "plots/temp2",
+  show = TRUE,
+  # save_path = "plots/temp2",
   ggwidth = NA,
   ggheight = NA
 )
 
-# remove selected clusters ---------------------
-Idents(seu_singlet_myelo) <- "cluster.totalvi.myelo"
-cells_to_remove <- seu_singlet_myelo[, Idents(seu_singlet_myelo) == "10"]
+# 13. remove selected clusters ---------------------
+Idents(seu_singlet_myelo) <- "cluster.pca.myelo"
+cells_to_remove <- seu_singlet_myelo[, Idents(seu_singlet_myelo) == 10 | 12 | 13]
+cells_to_remove
+# 3394 samples (to remove)
+
+cells_to_remove <- subset(seu_singlet_myelo, Idents(seu_singlet_myelo) == 10 | 12 | 13)
+cells_to_remove
+
+seu_singlet <- subset(seu_singlet, cells = cells_to_remove, invert = TRUE)
 
 seu_singlet <- subset(
   seu_singlet,
   cells = setdiff(Cells(seu_singlet), Cells(cells_to_remove))
 )
-# rereun normalize after removing cells/clusters ------------------
+# 14. rereun normalize after removing cells/clusters ------------------
+seu_singlet
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
   normalize = "sct",
   cluster.name = "cluster.sct",
+  run_pca = TRUE,
   pca.reduction.name = "pca.sct",
   umap.reduction.name = "umap.sct",
   dims = 1:30,
   k.param = 20,
   algorithm = 4,
-  resolution = 0.8,
+  resolution = 0.5,
   group.singletons = TRUE
+)
+seu_DimPlot(
+  seu_singlet,
+  reduction = "umap.sct",
+  group.by = c("cluster.sct"),
+  show = TRUE,
+  # save_path = "plots/temp",
+  ggheight = NA,
+  ggwidth = NA
+)
+seu_FeaturePlot(
+  seu_singlet,
+  assay = "SCT",
+  features = c("CD8A", "CD8B"),
+  reduction = "umap.sct",
+  color = inferno,
+  max.cutoff = NA,
+  show = TRUE,
+  # save_path = "plots/temp2",
+  ggwidth = NA,
+  ggheight = NA
 )
 
 
 
-# 10. vizualize clonality ----------------------------------------
+# 15. vizualize clonality ----------------------------------------
 library(scRepertoire)
 
 tcr_sample <- read_csv("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per_sample_outs/sample1/vdj_t/filtered_contig_annotations.csv")
@@ -478,7 +475,7 @@ DimPlot(
 ) + scale_color_manual(values = rev(colorblind_vector[c(1, 3, 4, 5, 7)]))
 
 
-# 11. Name clusters -------------------------------------
+# 16. Final Naming of clusters -------------------------------------
 ## copy seurat_clusters column
 seu_singlet[["my_id"]] <- seu_singlet[["seurat_clusters"]]
 Idents(seu_singlet) <- "my_id"
@@ -512,25 +509,9 @@ seu_singlet$my_id <- plyr::mapvalues(
   )
 )
 
-DimPlot(
-  seu_singlet,
-  reduction = "umap",
-  pt.size = 0.5,
-  group.by = c("MULTI_ID", "my_id"),
-  label = TRUE
-)
-colnames(seu_singlet@meta.data)
-
-
-
-FeaturePlot(
-  seu_singlet,
-  c("S.Score", "G2M.Score"),
-  reduction = "umap",
-  label = TRUE
-)
-
-test <- RunPCA(seu_singlet, features = c(s.genes, g2m.genes))
+# 17. VIZ cycling cells (this should go much earlier)
+test <- RunPCA(seu_singlet, features = c(s_genes, g2m_genes))
+DimPlot(test, reduction = "pca")
 DimPlot(test, reduction = "pca")
 
 DimPlot(test,
@@ -540,8 +521,8 @@ DimPlot(test,
 )
 
 FeaturePlot(
-  seu_singlet, "percent_ribo",
-  reduction = "umap",
+  test, "percent_ribo",
+  reduction = "umap.sct",
   label = TRUE
 )
 
