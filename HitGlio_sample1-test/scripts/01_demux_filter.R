@@ -2,6 +2,8 @@
 
 # httpgd::hgd_url() #nolint
 
+source("scripts/functions.R")
+
 # 0. Libraries --------------------------------------------------
 library(Seurat)
 library(ggplot2)
@@ -15,19 +17,21 @@ library(DoubletFinder)
 options(future.globals.maxSize = 2.0 * 1e9) # 2GB
 library(sceasy) # convert to anndata, scvi integration
 library(dittoSeq)
+
 # 1. Paths ------------------------------------------------------
 setwd("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test")
 
-sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per_sample_outs/sample1/count/sample_filtered_feature_bc_matrix")
+sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per_sample_outs/sample1/count/sample_filtered_feature_bc_matrix") # nolint
 print(sample_path)
 
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
+s_genes <- cc.genes$s.genes
+g2m_genes <- cc.genes$g2m.genes
 
-source("scripts/functions.R")
-
+# 2. Load Seurat Object, Demux ---------------------
 seu <- initial_steps(sample_path)
+
 seu_demux <- initial_demux(seu)
+
 Idents(seu_demux) <- "MULTI_ID"
 
 VlnPlot(seu_demux, features = "nCount_RNA", pt.size = 0.1, log = TRUE)
@@ -37,12 +41,12 @@ VlnPlot(seu_demux, features = "nCount_RNA", pt.size = 0.1, log = TRUE)
 #   seu_demux,
 #   idents = c("tumor", "csf")
 # )
+
 seu_singlet <- subset(seu_demux, idents = c("tumor", "csf"))
 head(seu_singlet@meta.data)
 
-
-
-### subset csf and tumor singlets (for tcr analysis) -------
+# 3. Subset csf and tumor singlets (for tcr analysis) -------
+## / this goes to the script where tcr data in analyzed/
 seu_singlet_csf <- seu_subset(
   seu_singlet,
   subset = MULTI_ID == "csf"
@@ -51,13 +55,22 @@ seu_singlet_tumor <- seu_subset(
   seu_singlet,
   subset = MULTI_ID == "tumor"
 )
-# /now this goes to the script where tcr data in analyzed/
 
+# 4. Add quality features --------------------------
 seu_singlet <- add_quality_features(seu_singlet)
+
+# 5. Add Cell cycle scoring ------------------------------
+seu_singlet <- CellCycleScoring(
+  seu_singlet,
+  s.features = s_genes,
+  g2m.features = g2m_genes,
+  set.ident = TRUE
+)
 colnames(seu_singlet@meta.data)
 
-# może od razu SCT?
-# temp. bo nie bede potrzebowal tego pozniej
+# 6. Normalize befeore quality filtering (check how it looks like)
+# / może od razu SCT?
+# / _temp bo nie bede potrzebowal tego pozniej
 seu_singlet_q_filt_temp <- seu_normalize_var_scale_pca(
   seu_singlet,
   normalize = "log",
@@ -74,7 +87,7 @@ seu_singlet_q_filt_temp
 
 ElbowPlot(seu, ndims = 40)
 
-## Vizualize clusters and features before quality filtering ------------------
+# 7. Vizualize clusters and features before quality filtering ------------------
 q_features <- c(
   "nCount_RNA",
   "nFeature_RNA",
@@ -100,7 +113,7 @@ p4 <- violin_plot(
   features = q_features
 )
 
-## 5.5. Subset cells based on quality assesment -------------
+# 8. Subset cells based on quality assesment -------------
 # subset juz oryginalnego singlet
 seu_singlet <- subset(
   seu_singlet,
@@ -113,7 +126,7 @@ seu_singlet <- subset(
 )
 seu_singlet
 
-# 6. Normalize using SCT after q filtering for DOUBLET REMOVAL ------------
+# 9. Normalize using SCT after q filtering for DOUBLET REMOVAL ------------
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
   normalize = "sct",
@@ -128,7 +141,6 @@ seu_singlet <- seu_normalize_var_scale_pca(
 )
 seu_singlet
 
-?RunPCA
 seu_singlet <- NormalizeData(
   seu_singlet,
   assay = "ADT",
@@ -136,11 +148,10 @@ seu_singlet <- NormalizeData(
 )
 
 # 7. Remove doublets based on SCT initial clustering --------------------------
-# seu_singlet <- RunPCA(seu_singlet)
-# seu_singlet <- RunUMAP(seu_singlet, dims = 1:10)
-homotypic.prop <- modelHomotypic(seu_singlet$seurat_clusters)
+homotypic_prop <- modelHomotypic(seu_singlet$cluster.sct)
 nExp_poi <- round(0.075 * nrow(seu_singlet)) # estimate ~7.5% doublets
-nExp_poi.adj <- round(nExp_poi * (1 - homotypic.prop))
+nExp_poi_adj <- round(nExp_poi * (1 - homotypic_prop))
+
 seu_singlet_temp <- DoubletFinder::doubletFinder(
   seu_singlet,
   PCs = 1:10,
@@ -156,26 +167,44 @@ head(seu_singlet_temp@meta.data)
 
 seu_singlet <- subset(
   seu_singlet_temp,
-  subset = DF.classifications_0.25_0.09_1794 == "Singlet"
+  subset = DF.classifications_0.25_0.09_1841 == "Singlet"
 )
 seu_singlet
+## / zostało 13409 samples z 15250
 
+seu_singlet <- seu_normalize_var_scale_pca(
+  seu_singlet,
+  normalize = "sct",
+  cluster.name = "cluster.sct",
+  pca.reduction.name = "pca.sct",
+  umap.reduction.name = "umap.sct",
+  dims = 1:30, # change to 10 in case of removing doublets
+  k.param = 20,
+  algorithm = 4,
+  resolution = 0.8,
+  group.singletons = TRUE
+)
 
+saveRDS(seu_singlet, "RDS/seu_singlet_sct-doublet-500_05dec24.rds")
 
-
-
-# 7. totalVI model training ------------------
+# 8. totalVI model training of doublet-removed seu_singlet ------------------
 DefaultAssay(seu_singlet) <- "SCT"
 
-## for the purpose of scVI extract 3k variable genes (stored in scale.data)
-## and add it to the seurat object (TRUE/FALSE column)
-# scaled_matrix <- GetAssayData(seu_singlet, layer = "scale.data", assay = "SCT")
-# test <- rownames(seu_singlet) %in% rownames(scaled_matrix)
-# seu_singlet <- AddMetaData(seu_singlet,
-#   metadata = test,
-#   col.name = "sct.var.genes"
-# )
-# seu_singlet@meta.data$sct.var.genes
+## /for the purpose of scVI extract 3k variable genes (stored in scale.data)
+## /and add it to the seurat object (TRUE/FALSE column)
+scaled_matrix <- GetAssayData(seu_singlet, layer = "scale.data", assay = "SCT")
+test <- rownames(seu_singlet) %in% rownames(scaled_matrix)
+seu_singlet <- AddMetaData(seu_singlet,
+  metadata = test,
+  col.name = "sct.var.genes"
+)
+seu_singlet@meta.data$sct.var.genes
+
+sct_vst_counts <- seu_singlet[["SCT"]]@data
+variable_features <- VariableFeatures(seu_singlet)
+variable_features
+vst_counts_variable <- sct_vst_counts[variable_features, ]
+dim(vst_counts_variable)
 
 # v3 problem, not relevant to SCT normalization ---------------
 # seu_singlet <- readRDS("RDS/seu_singlet-clustered-27nov2024.rds")
@@ -184,25 +213,21 @@ DefaultAssay(seu_singlet) <- "SCT"
 # seu_singlet[["RNA"]] <- NULL
 # seu_singlet <- RenameAssays(object = seu_singlet, RNA3 = "RNA")
 
-DefaultAssay(seu_singlet) <- "ADT"
 seu_singlet
 adata <- convertFormat(
   seu_singlet,
   from = "seurat",
   to = "anndata",
   main_layer = "counts",
-  assay = "SCT",
-  # assay = "ADT",
+  # assay = "SCT",
+  assay = "ADT",
   drop_single_values = FALSE,
-  # outFile = "RDS/test-adt.h5ad"
-  outFile = "RDS/scvi-sct_12-04-24_doublet_500.h5ad"
+  outFile = "RDS/seu_singlet_adt-doublet-500-hvg_05dec24.rds.h5ad"
 )
 adata
 
 # go to python, and bring back latent.csv --------------------
-latent <- read.csv("RDS/latent-sct-totalVI_12-02-24.csv") # INTEGRATED (tumor + csf)
-latent <- read.csv("RDS/latent-sct-totalVI_12-04-24_wo-int.csv")
-latent <- read.csv("RDS/latent-sct-totalVI_12-04-24_wo-int-doublet-500.csv")
+latent <- read.csv("")
 
 latent_mtx <- as.matrix(latent)
 rownames(latent_mtx) <- colnames(seu_singlet)
@@ -216,7 +241,6 @@ seu_singlet
 colnames(seu_singlet@meta.data)
 
 seu_singlet[["totalvi.sct"]] <- CreateDimReducObject(
-  # seu_singlet[["totalvi_int.sct"]] <- CreateDimReducObject(
   embeddings = latent_mtx,
   key = "totalvi_",
   assay = DefaultAssay(seu_singlet)
@@ -497,16 +521,7 @@ DimPlot(
 )
 colnames(seu_singlet@meta.data)
 
-# Cell cycle scoring ------------------------------
-# should be performed much earlier.
-# as i dont think i should regress out phase genes,
-# i left it here for the future (or mayby i'll change my mind)
-seu_singlet <- CellCycleScoring(
-  seu_singlet,
-  s.features = s.genes,
-  g2m.features = g2m.genes,
-  set.ident = TRUE
-)
+
 
 FeaturePlot(
   seu_singlet,
