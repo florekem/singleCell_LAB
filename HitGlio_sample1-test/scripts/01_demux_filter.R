@@ -30,7 +30,6 @@ seu <- initial_steps(sample_path)
 seu_demux <- initial_demux(seu)
 Idents(seu_demux) <- "MULTI_ID"
 
-
 VlnPlot(seu_demux, features = "nCount_RNA", pt.size = 0.1, log = TRUE)
 
 # head(seu_demux@meta.data)
@@ -114,14 +113,14 @@ seu_singlet <- subset(
 )
 seu_singlet
 
-# 6. Normalize using SCT transform after quality filtering ------------
+# 6. Normalize using SCT after q filtering for DOUBLET REMOVAL ------------
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
   normalize = "sct",
   cluster.name = "cluster.sct",
   pca.reduction.name = "pca.sct",
   umap.reduction.name = "umap.sct",
-  dims = 1:20, # change to 10 in case of removing doublets
+  dims = 1:10, # change to 10 in case of removing doublets
   k.param = 20,
   algorithm = 4,
   resolution = 0.8,
@@ -136,6 +135,112 @@ seu_singlet <- NormalizeData(
   normalization.method = "CLR"
 )
 
+# 7. Remove doublets based on SCT initial clustering --------------------------
+# seu_singlet <- RunPCA(seu_singlet)
+# seu_singlet <- RunUMAP(seu_singlet, dims = 1:10)
+homotypic.prop <- modelHomotypic(seu_singlet$seurat_clusters)
+nExp_poi <- round(0.075 * nrow(seu_singlet)) # estimate ~7.5% doublets
+nExp_poi.adj <- round(nExp_poi * (1 - homotypic.prop))
+seu_singlet_temp <- DoubletFinder::doubletFinder(
+  seu_singlet,
+  PCs = 1:10,
+  pN = 0.25,
+  pK = 0.09,
+  nExp = nExp_poi.adj,
+  reuse.pANN = FALSE,
+  sct = TRUE
+)
+seu_singlet_temp
+colnames(seu_singlet_temp@meta.data)
+head(seu_singlet_temp@meta.data)
+
+seu_singlet <- subset(
+  seu_singlet_temp,
+  subset = DF.classifications_0.25_0.09_1794 == "Singlet"
+)
+seu_singlet
+
+
+
+
+
+# 7. totalVI model training ------------------
+DefaultAssay(seu_singlet) <- "SCT"
+
+## for the purpose of scVI extract 3k variable genes (stored in scale.data)
+## and add it to the seurat object (TRUE/FALSE column)
+# scaled_matrix <- GetAssayData(seu_singlet, layer = "scale.data", assay = "SCT")
+# test <- rownames(seu_singlet) %in% rownames(scaled_matrix)
+# seu_singlet <- AddMetaData(seu_singlet,
+#   metadata = test,
+#   col.name = "sct.var.genes"
+# )
+# seu_singlet@meta.data$sct.var.genes
+
+# v3 problem, not relevant to SCT normalization ---------------
+# seu_singlet <- readRDS("RDS/seu_singlet-clustered-27nov2024.rds")
+# seu_singlet[["RNA3"]] <- as(object = seu_singlet[["RNA"]], Class = "Assay")
+# DefaultAssay(seu_singlet) <- "RNA3"
+# seu_singlet[["RNA"]] <- NULL
+# seu_singlet <- RenameAssays(object = seu_singlet, RNA3 = "RNA")
+
+DefaultAssay(seu_singlet) <- "ADT"
+seu_singlet
+adata <- convertFormat(
+  seu_singlet,
+  from = "seurat",
+  to = "anndata",
+  main_layer = "counts",
+  assay = "SCT",
+  # assay = "ADT",
+  drop_single_values = FALSE,
+  # outFile = "RDS/test-adt.h5ad"
+  outFile = "RDS/scvi-sct_12-04-24_doublet_500.h5ad"
+)
+adata
+
+# go to python, and bring back latent.csv --------------------
+latent <- read.csv("RDS/latent-sct-totalVI_12-02-24.csv") # INTEGRATED (tumor + csf)
+latent <- read.csv("RDS/latent-sct-totalVI_12-04-24_wo-int.csv")
+latent <- read.csv("RDS/latent-sct-totalVI_12-04-24_wo-int-doublet-500.csv")
+
+latent_mtx <- as.matrix(latent)
+rownames(latent_mtx) <- colnames(seu_singlet)
+latent_mtx <- latent_mtx[, -1] # remove 1st col
+dim(latent_mtx)
+colnames(latent_mtx) <- paste0("totalvi_", 1:20)
+colnames(latent_mtx)
+
+DefaultAssay(seu_singlet) <- "SCT"
+seu_singlet
+colnames(seu_singlet@meta.data)
+
+seu_singlet[["totalvi.sct"]] <- CreateDimReducObject(
+  # seu_singlet[["totalvi_int.sct"]] <- CreateDimReducObject(
+  embeddings = latent_mtx,
+  key = "totalvi_",
+  assay = DefaultAssay(seu_singlet)
+)
+seu_singlet
+
+seu_singlet
+colnames(seu_singlet@meta.data)
+
+# clustering po dodaniu latent -------------------------
+# / nie normalizuje bo nie trzeba i nie robie pca poniewaz używam totalvi
+seu_singlet <- seu_normalize_var_scale_pca(
+  seu_singlet,
+  normalize = FALSE,
+  cluster.name = "cluster.totalvi",
+  run_pca = FALSE, # not runnign pca, changing clusters in totalvi reduction
+  pca.reduction.name = "totalvi.sct", # instead of pca
+  umap.reduction.name = "umap.totalvi.sct",
+  dims = 1:20,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.1,
+  group.singletons = FALSE
+)
 
 # 8. Vizualize GEX features after initial SCT clustering ---------
 DefaultAssay(seu_singlet) <- "SCT"
@@ -193,113 +298,8 @@ seu_FeaturePlot(
   ggwidth = NA
 )
 
-# remove doublets from SCT initial clustering --------------------------
-# in the future I plan to use totalvi also here
-seu_singlet <- RunPCA(seu_singlet)
-seu_singlet <- RunUMAP(seu_singlet, dims = 1:10)
 
-homotypic.prop <- modelHomotypic(seu_singlet$seurat_clusters)
-nExp_poi <- round(0.075 * nrow(seu_singlet)) # estimate ~7.5% doublets
-nExp_poi.adj <- round(nExp_poi * (1 - homotypic.prop))
-seu_singlet_temp <- DoubletFinder::doubletFinder(
-  seu_singlet,
-  PCs = 1:10,
-  pN = 0.25,
-  pK = 0.09,
-  nExp = nExp_poi.adj,
-  reuse.pANN = FALSE,
-  sct = TRUE
-)
-seu_singlet_temp
-colnames(seu_singlet_temp@meta.data)
-head(seu_singlet_temp@meta.data)
 
-seu_singlet <- subset(
-  seu_singlet_temp,
-  subset = DF.classifications_0.25_0.09_1794 == "Singlet"
-)
-seu_singlet
-
-# 10. totalVI model training ------------------
-# /not sure if it will produce any good output, but lets try
-
-DefaultAssay(seu_singlet) <- "SCT"
-
-## for the purpose of scVI extract 3k variable genes (stored in scale.data)
-## and add it to the seurat object (TRUE/FALSE column)
-scaled_matrix <- GetAssayData(seu_singlet, layer = "scale.data", assay = "SCT")
-test <- rownames(seu_singlet) %in% rownames(scaled_matrix)
-seu_singlet <- AddMetaData(seu_singlet,
-  metadata = test,
-  col.name = "sct.var.genes"
-)
-seu_singlet@meta.data$sct.var.genes
-
-# v3 problem, not relevant to SCT normalization ---------------
-# seu_singlet <- readRDS("RDS/seu_singlet-clustered-27nov2024.rds")
-# seu_singlet[["RNA3"]] <- as(object = seu_singlet[["RNA"]], Class = "Assay")
-# DefaultAssay(seu_singlet) <- "RNA3"
-# seu_singlet[["RNA"]] <- NULL
-# seu_singlet <- RenameAssays(object = seu_singlet, RNA3 = "RNA")
-
-DefaultAssay(seu_singlet) <- "ADT"
-seu_singlet
-adata <- convertFormat(
-  seu_singlet,
-  from = "seurat",
-  to = "anndata",
-  main_layer = "counts",
-  assay = "SCT",
-  # assay = "ADT",
-  drop_single_values = FALSE,
-  # outFile = "RDS/test-adt.h5ad"
-  outFile = "RDS/scvi-sct_12-04-24_doublet_500.h5ad"
-)
-adata
-
-# go to python, and bring back latent.csv --------------------
-seu_singlet <- readRDS("RDS/seu_singlet-clustered-sct-plain-04dec24.rds")
-latent <- read.csv("RDS/latent-sct-totalVI_12-02-24.csv") # INTEGRATED (tumor + csf)
-latent <- read.csv("RDS/latent-sct-totalVI_12-04-24_wo-int.csv")
-latent <- read.csv("RDS/latent-sct-totalVI_12-04-24_wo-int-doublet-500.csv")
-
-latent_mtx <- as.matrix(latent)
-rownames(latent_mtx) <- colnames(seu_singlet)
-latent_mtx <- latent_mtx[, -1] # remove 1st col
-dim(latent_mtx)
-colnames(latent_mtx) <- paste0("totalvi_", 1:20)
-colnames(latent_mtx)
-
-DefaultAssay(seu_singlet) <- "SCT"
-seu_singlet
-colnames(seu_singlet@meta.data)
-
-seu_singlet[["totalvi.sct"]] <- CreateDimReducObject(
-  # seu_singlet[["totalvi_int.sct"]] <- CreateDimReducObject(
-  embeddings = latent_mtx,
-  key = "totalvi_",
-  assay = DefaultAssay(seu_singlet)
-)
-seu_singlet
-
-seu_singlet
-colnames(seu_singlet@meta.data)
-
-# clustering po dodaniu latent -------------------------
-# / nie normalizuje bo nie trzeba i nie robie pca poniewaz używam totalvi
-seu_singlet <- seu_normalize_var_scale_pca(
-  seu_singlet,
-  normalize = FALSE,
-  cluster.name = "cluster.totalvi",
-  run_pca = FALSE, # not runnign pca, changing clusters in totalvi reduction
-  pca.reduction.name = "totalvi.sct", # instead of pca
-  umap.reduction.name = "umap.totalvi.sct",
-  dims = 1:20,
-  k.param = 30,
-  algorithm = 4,
-  resolution = 0.1,
-  group.singletons = FALSE
-)
 
 # VIZ. OF scVI data
 colnames(seu_singlet@meta.data)
