@@ -191,7 +191,7 @@ seu_singlet <- NormalizeData(
 )
 seu_singlet
 
-# saveRDS(seu_singlet, "RDS/seu_singlet_sct-doublet-500_05dec24.rds")
+saveRDS(seu_singlet, "RDS/seu_singlet_sct-doublet-500_05dec24.rds")
 
 # 8. totalVI model training of doublet-removed seu_singlet ------------------
 DefaultAssay(seu_singlet) <- "SCT"
@@ -228,10 +228,10 @@ adata <- convertFormat(
   from = "seurat",
   to = "anndata",
   main_layer = "counts",
-  # assay = "SCT",
-  assay = "ADT",
+  assay = "SCT",
+  # assay = "ADT",
   drop_single_values = FALSE,
-  outFile = "RDS/seu_singlet_adt-doublet-500-hvg_05dec24.rds.h5ad"
+  outFile = "RDS/seu_singlet_sct-doublet-500-hvg_05dec24.rds.h5ad"
 )
 adata
 
