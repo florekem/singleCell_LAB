@@ -2,7 +2,6 @@
 
 # httpgd::hgd_url() #nolint
 
-source("scripts/functions.R")
 
 # 0. Libraries --------------------------------------------------
 library(Seurat)
@@ -20,6 +19,8 @@ library(dittoSeq)
 
 # 1. Paths ------------------------------------------------------
 setwd("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test")
+
+source("scripts/functions.R")
 
 sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per_sample_outs/sample1/count/sample_filtered_feature_bc_matrix") # nolint
 print(sample_path)
@@ -47,14 +48,14 @@ head(seu_singlet@meta.data)
 
 # 3. Subset csf and tumor singlets (for tcr analysis) -------
 ## / this goes to the script where tcr data in analyzed/
-seu_singlet_csf <- seu_subset(
-  seu_singlet,
-  subset = MULTI_ID == "csf"
-)
-seu_singlet_tumor <- seu_subset(
-  seu_singlet,
-  subset = MULTI_ID == "tumor"
-)
+# seu_singlet_csf <- seu_subset(
+#   seu_singlet,
+#   subset = MULTI_ID == "csf"
+# )
+# seu_singlet_tumor <- seu_subset(
+#   seu_singlet,
+#   subset = MULTI_ID == "tumor"
+# )
 
 # 4. Add quality features --------------------------
 seu_singlet <- add_quality_features(seu_singlet)
@@ -124,7 +125,16 @@ seu_singlet <- subset(
     nCount_RNA > 500 &
     percent_mito < 8
 )
+
+# / subset ADT quantile 0.99
+FeatureScatter(seu_singlet, feature1 = "nFeature_RNA", feature2 = "nCount_ADT")
+
+seu_singlet <- subset(
+  seu_singlet,
+  subset = nCount_ADT < quantile(seu_singlet$nCount_ADT, 0.99)
+)
 seu_singlet
+# 15097
 
 # 9. Normalize using SCT after q filtering for DOUBLET REMOVAL ------------
 seu_singlet <- seu_normalize_var_scale_pca(
@@ -139,13 +149,13 @@ seu_singlet <- seu_normalize_var_scale_pca(
   resolution = 0.8,
   group.singletons = TRUE
 )
-seu_singlet
 
 seu_singlet <- NormalizeData(
   seu_singlet,
   assay = "ADT",
   normalization.method = "CLR"
 )
+seu_singlet
 
 # 7. Remove doublets based on SCT initial clustering --------------------------
 homotypic_prop <- modelHomotypic(seu_singlet$cluster.sct)
@@ -167,10 +177,10 @@ head(seu_singlet_temp@meta.data)
 
 seu_singlet <- subset(
   seu_singlet_temp,
-  subset = DF.classifications_0.25_0.09_1841 == "Singlet"
+  subset = DF.classifications_0.25_0.09_1831 == "Singlet"
 )
 seu_singlet
-## / zostało 13409 samples z 15250
+## / zostało 13266 samples
 
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
@@ -178,7 +188,7 @@ seu_singlet <- seu_normalize_var_scale_pca(
   cluster.name = "cluster.sct",
   pca.reduction.name = "pca.sct",
   umap.reduction.name = "umap.sct",
-  dims = 1:20,
+  dims = 1:20, # czy jak tu zmienię dims to w totalvi też będzie więcej?
   k.param = 40,
   algorithm = 4,
   resolution = 0.1,
@@ -228,15 +238,15 @@ adata <- convertFormat(
   from = "seurat",
   to = "anndata",
   main_layer = "counts",
-  assay = "SCT",
-  # assay = "ADT",
+  # assay = "SCT",
+  assay = "ADT",
   drop_single_values = FALSE,
-  outFile = "RDS/seu_singlet_sct-doublet-500-hvg_05dec24.rds.h5ad"
+  outFile = "RDS/seu_singlet_adt_06-dec-24.h5ad"
 )
 adata
 
 # Go to python, and bring back latent.csv --------------------
-latent <- read.csv("latents/latent-sct-totalVI_06dec24_wo-int-doublet-500.csv")
+latent <- read.csv("latents/latent-seu_singlet_adt_06-dec-24.csv")
 
 latent_mtx <- as.matrix(latent)
 rownames(latent_mtx) <- colnames(seu_singlet)
@@ -273,7 +283,7 @@ seu_singlet <- seu_normalize_var_scale_pca(
   group.singletons = FALSE
 )
 
-# 10. Vizualize GEX features after totalVI latent SCT clustering ---------
+# 10. INSPECT features (mainly for CD8) after totalVI latent SCT clustering ----
 DefaultAssay(seu_singlet) <- "SCT"
 inferno <- viridis::scale_color_viridis(option = "inferno")
 
@@ -311,6 +321,7 @@ seu_dittoDotPlot(
   vars = vars,
   group.by = "seurat_clusters"
 )
+
 # 11. Vizualize ADT features -------------
 DefaultAssay(seu_singlet) <- "ADT"
 features <- Features(seu_singlet)
@@ -324,23 +335,24 @@ adt_features <- c("TotalSeqC-CD8")
 seu_FeaturePlot(
   seu_singlet, "ADT",
   # reduction = "umap.totalvi.sct",
-  reduction = "umap.sct",
+  reduction = "umap.totalvi.sct",
   color = inferno,
-  features = adt_features,
+  features = f2,
   max.cutoff = NA,
-  show = TRUE,
-  # save_path = "plots/scv-500-doublets/adt-panel_4",
-  ggheight = NA,
-  ggwidth = NA
+  show = FALSE,
+  save_path = "plots/scv-500-doublets/adt-panel_4",
+  ggheight = 20,
+  ggwidth = 20
 )
 
 # 12. subset myeloid cluster to filter out cd8 cells -------------------
+DefaultAssay(seu_singlet) <- "SCT"
 Idents(seu_singlet) <- "cluster.totalvi"
 Idents(seu_singlet)
 
 seu_singlet_myelo <- subset(seu_singlet, idents = c(2))
 seu_singlet_myelo
-# / 3426 samples
+# / 3349 samples
 
 # / this time PCA makes more sense, bc I need to find
 # / CD8-specific clusters, and totalvi latent is set
@@ -379,22 +391,20 @@ seu_FeaturePlot(
   ggheight = NA
 )
 
-saveRDS(seu_singlet, "RDS/seu_singlet_temp.rds")
-
 # 13. remove selected clusters ---------------------
 Idents(seu_singlet_myelo) <- "cluster.pca.myelo"
 clusters_to_remove <- subset(seu_singlet_myelo, idents = c(6, 11))
 clusters_to_remove
-# / 411 samples
+# / 370 samples
 
 seu_singlet <- subset(
   seu_singlet,
   cells = setdiff(Cells(seu_singlet), Cells(clusters_to_remove))
 )
 seu_singlet
+# / 12896 samples
 
 # 14. rereun normalize after removing CD8 cells from myelo clusters ------------
-seu_singlet
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
   normalize = "sct",
@@ -444,14 +454,14 @@ adata <- convertFormat(
   from = "seurat",
   to = "anndata",
   main_layer = "counts",
-  # assay = "SCT",
-  assay = "ADT",
+  assay = "SCT",
+  # assay = "ADT",
   drop_single_values = FALSE,
-  outFile = "RDS/seu_singlet_adt_wo-cd8inMyelo_06dec24.h5ad"
+  outFile = "RDS/seu_singlet_sct_wo-cd8inMyelo_06dec24_adt-quant99.h5ad"
 )
 
 ## 15.2 Go to python, and bring back latent.csv --------------------
-latent <- read.csv("latents/latent-sct-totalVI_06dec24_after-removing-of-cd8-from-myeloid-cluster.csv")
+latent <- read.csv("latents/.csv")
 
 latent_mtx <- as.matrix(latent)
 rownames(latent_mtx) <- colnames(seu_singlet)
@@ -488,7 +498,7 @@ seu_singlet <- seu_normalize_var_scale_pca(
   group.singletons = FALSE
 )
 
-# 17. Vizualize GEX features after totalVI latent SCT clustering ---------
+# 17. INSPECT features for CD8 after removing from myelo ---------
 DefaultAssay(seu_singlet) <- "SCT"
 inferno <- viridis::scale_color_viridis(option = "inferno")
 
@@ -524,8 +534,66 @@ seu_DimPlot(
 seu_dittoDotPlot(
   seu_singlet,
   vars = vars,
-  group.by = "seurat_cluster8"
+  group.by = "seurat_clusters"
 )
+
+# 18. Vizualize ADT features after all that cleanup -------------
+DefaultAssay(seu_singlet) <- "ADT"
+features <- Features(seu_singlet)
+length(features)
+f1 <- features[1:10]
+f2 <- features[11:21]
+f3 <- features[22:32]
+f4 <- features[33:42]
+f_list <- list(f1, f2, f3, f4)
+
+for (i in seq_along(1:4)) {
+  seu_FeaturePlot(
+    seu_singlet, "ADT",
+    reduction = "umap.totalvi.sct",
+    color = inferno,
+    features = f_list[[i]],
+    max.cutoff = NA,
+    show = FALSE,
+    save_path = paste0("plots/06-dec-24_scv-totalvi-final/adt-panel_", i),
+    ggheight = 20,
+    ggwidth = 20
+  )
+}
+
+
+
+
+saveRDS(seu_singlet, "RDS/06-dec-24_seu_singlet_final_doublet-500_wo-cd8-myelo_sct_totalvi.rds")
+
+# 18. AZIMUTH
+library(Azimuth)
+
+?RunAzimuth
+seu_singlet_azi <- RunAzimuth(
+  seu_singlet,
+  reference = "pbmcref",
+  do.adt = TRUE,
+  assay = "SCT",
+  query.modality = "SCT"
+)
+
+colnames(seu_singlet_azi@meta.data)
+
+seu_singlet_azi <- NormalizeData(seu_singlet_azi)
+
+Idents(seu_singlet_azi) <- "predicted.celltype.l2"
+
+seu_DimPlot(
+  seu_singlet_azi,
+  reduction = "umap.totalvi.sct",
+  group.by = c("predicted.celltype.l2"),
+  show = TRUE,
+  # save_path = "plots/scv-500-doublets/PBMCref",
+  ggheight = NA,
+  ggwidth = NA
+)
+
 
 
 
@@ -668,3 +736,44 @@ cluster_3.markers <- FindMarkers(
 rownames(cluster_3.markers)[1:30]
 
 saveRDS(seu_singlet, "RDS/seu_singlet-clustered-totalvi-28nov2024.rds")
+
+
+
+FeatureScatter(seu_test, feature1 = "nFeature_RNA", feature2 = "nCount_ADT")
+seu_test <- subset(seu_singlet, subset = nCount_ADT < quantile(seu_singlet$nCount_ADT, 0.99))
+
+DefaultAssay(seu_test) <- "SCT"
+
+seu_test <- seu_normalize_var_scale_pca(
+  seu_test,
+  normalize = "SCT",
+  cluster.name = "cluster.pca",
+  run_pca = TRUE, # not runnign pca, changing clusters in totalvi reduction
+  pca.reduction.name = "pca.sct", # instead of pca
+  umap.reduction.name = "umap.sct",
+  dims = 1:20,
+  k.param = 20,
+  algorithm = 4,
+  resolution = 0.8,
+  group.singletons = FALSE
+)
+seu_test <- NormalizeData(
+  seu_test,
+  assay = "ADT",
+  normalization.method = "CLR"
+)
+
+for (i in seq_along(1:4)) {
+  seu_FeaturePlot(
+    seu_test, "ADT",
+    reduction = "umap.sct",
+    color = inferno,
+    features = f_list[[i]],
+    max.cutoff = NA,
+    show = FALSE,
+    save_path = paste0("plots/06-dec-24_scv-totalvi-final/adt-panel_", i),
+    ggheight = 20,
+    ggwidth = 20
+  )
+}
+seu_test
