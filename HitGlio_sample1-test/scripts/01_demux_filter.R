@@ -437,7 +437,7 @@ seu_FeaturePlot(
 )
 
 # 15. Rerun totalVI after removing CD8 cells from myeloid cluster -----
-## / convert to anndata
+## 15.1 convert to anndata
 seu_singlet
 adata <- convertFormat(
   seu_singlet,
@@ -450,6 +450,82 @@ adata <- convertFormat(
   outFile = "RDS/seu_singlet_adt_wo-cd8inMyelo_06dec24.h5ad"
 )
 
+## 15.2 Go to python, and bring back latent.csv --------------------
+latent <- read.csv("latents/latent-sct-totalVI_06dec24_after-removing-of-cd8-from-myeloid-cluster.csv")
+
+latent_mtx <- as.matrix(latent)
+rownames(latent_mtx) <- colnames(seu_singlet)
+latent_mtx <- latent_mtx[, -1] # remove 1st col
+dim(latent_mtx)
+colnames(latent_mtx) <- paste0("totalvi_", 1:20)
+colnames(latent_mtx)
+
+DefaultAssay(seu_singlet) <- "SCT"
+seu_singlet
+colnames(seu_singlet@meta.data)
+
+seu_singlet[["totalvi.sct"]] <- CreateDimReducObject(
+  embeddings = latent_mtx,
+  key = "totalvi_",
+  assay = DefaultAssay(seu_singlet)
+)
+seu_singlet
+colnames(seu_singlet@meta.data)
+
+# 16. Clustering po dodaniu latent-wo-myelo -------------------------
+# / nie normalizuje bo nie trzeba i nie robie pca poniewaz używam totalvi
+seu_singlet <- seu_normalize_var_scale_pca(
+  seu_singlet,
+  normalize = FALSE,
+  cluster.name = "cluster.totalvi",
+  run_pca = FALSE, # not runnign pca, changing clusters in totalvi reduction
+  pca.reduction.name = "totalvi.sct", # instead of pca
+  umap.reduction.name = "umap.totalvi.sct",
+  dims = 1:20,
+  k.param = 20,
+  algorithm = 4,
+  resolution = 0.8,
+  group.singletons = FALSE
+)
+
+# 17. Vizualize GEX features after totalVI latent SCT clustering ---------
+DefaultAssay(seu_singlet) <- "SCT"
+inferno <- viridis::scale_color_viridis(option = "inferno")
+
+vars <- t_cell_markers
+vars <- macrophages
+vars <- ein_like
+vars <- inpc_like
+vars <- c("CD8A", "CD8B")
+seu_FeaturePlot(
+  seu_singlet,
+  assay = "SCT",
+  features = vars,
+  reduction = "umap.totalvi.sct",
+  # reduction = "umap.sct",
+  color = inferno,
+  max.cutoff = NA,
+  show = TRUE,
+  # save_path = "plots/scv-500-doublets/inpc-like_markers",
+  # ggheight = 30,
+  # ggwidth = 30
+)
+seu_DimPlot(
+  seu_singlet,
+  reduction = "umap.totalvi.sct",
+  # reduction = "umap.sct",
+  group.by = c("MULTI_ID", "cluster.totalvi"),
+  # group.by = c("MULTI_ID", "cluster.sct"),
+  show = TRUE,
+  # save_path = "plots/clusters",
+  ggheight = NA,
+  ggwidth = NA
+)
+seu_dittoDotPlot(
+  seu_singlet,
+  vars = vars,
+  group.by = "seurat_clusters"
+)
 
 
 
