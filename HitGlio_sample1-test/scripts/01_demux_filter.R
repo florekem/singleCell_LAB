@@ -461,7 +461,7 @@ adata <- convertFormat(
 )
 
 ## 15.2 Go to python, and bring back latent.csv --------------------
-latent <- read.csv("latents/.csv")
+latent <- read.csv("latents/latent-seu_singlet_sct_wo-cd8inMyelo_06dec24_adt-quant99.csv")
 
 latent_mtx <- as.matrix(latent)
 rownames(latent_mtx) <- colnames(seu_singlet)
@@ -560,9 +560,6 @@ for (i in seq_along(1:4)) {
     ggwidth = 20
   )
 }
-
-
-
 
 saveRDS(seu_singlet, "RDS/06-dec-24_seu_singlet_final_doublet-500_wo-cd8-myelo_sct_totalvi.rds")
 
