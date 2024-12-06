@@ -214,7 +214,7 @@ DefaultAssay(seu_singlet) <- "SCT"
 # vst_counts_variable <- sct_vst_counts[variable_features, ]
 # dim(vst_counts_variable)
 
-# v3 problem, not relevant to SCT normalization ---------------
+## / v3 problem, not relevant to SCT normalization
 # seu_singlet <- readRDS("RDS/seu_singlet-clustered-27nov2024.rds")
 # seu_singlet[["RNA3"]] <- as(object = seu_singlet[["RNA"]], Class = "Assay")
 # DefaultAssay(seu_singlet) <- "RNA3"
@@ -236,7 +236,7 @@ adata <- convertFormat(
 adata
 
 # Go to python, and bring back latent.csv --------------------
-latent <- read.csv("latents/latent-sct-totalVI_05dec24_wo-int-doublet-500.csv")
+latent <- read.csv("latents/latent-sct-totalVI_06dec24_wo-int-doublet-500.csv")
 
 latent_mtx <- as.matrix(latent)
 rownames(latent_mtx) <- colnames(seu_singlet)
@@ -269,7 +269,7 @@ seu_singlet <- seu_normalize_var_scale_pca(
   dims = 1:20,
   k.param = 20,
   algorithm = 4,
-  resolution = 0.8,
+  resolution = 0.1,
   group.singletons = FALSE
 )
 
@@ -286,8 +286,8 @@ seu_FeaturePlot(
   seu_singlet,
   assay = "SCT",
   features = vars,
-  # reduction = "umap.totalvi.sct",
-  reduction = "umap.sct",
+  reduction = "umap.totalvi.sct",
+  # reduction = "umap.sct",
   color = inferno,
   max.cutoff = NA,
   show = TRUE,
@@ -297,10 +297,10 @@ seu_FeaturePlot(
 )
 seu_DimPlot(
   seu_singlet,
-  # reduction = "umap.totalvi.sct",
-  reduction = "umap.sct",
-  # group.by = c("MULTI_ID", "cluster.totalvi"),
-  group.by = c("MULTI_ID", "cluster.sct"),
+  reduction = "umap.totalvi.sct",
+  # reduction = "umap.sct",
+  group.by = c("MULTI_ID", "cluster.totalvi"),
+  # group.by = c("MULTI_ID", "cluster.sct"),
   show = TRUE,
   # save_path = "plots/clusters",
   ggheight = NA,
@@ -335,19 +335,22 @@ seu_FeaturePlot(
 )
 
 # 12. subset myeloid cluster to filter out cd8 cells -------------------
-Idents(seu_singlet) <- "cluster.sct"
+Idents(seu_singlet) <- "cluster.totalvi"
 Idents(seu_singlet)
 
-seu_singlet_myelo <- subset(seu_singlet, idents = c(2, 5))
+seu_singlet_myelo <- subset(seu_singlet, idents = c(2))
+seu_singlet_myelo
+# / 3426 samples
 
-# this time PCA (rerun with only myelo) is much better, dunno
+# / this time PCA makes more sense, bc I need to find
+# / CD8-specific clusters, and totalvi latent is set
 seu_singlet_myelo <- seu_normalize_var_scale_pca(
   seu_singlet_myelo,
   normalize = "sct",
   cluster.name = "cluster.pca.myelo",
   run_pca = TRUE,
-  pca.reduction.name = "pca.sct",
-  umap.reduction.name = "umap.pca.sct",
+  pca.reduction.name = "pca.myelo.sct",
+  umap.reduction.name = "umap.myelo.pca.sct",
   dims = 1:5,
   k.param = 10,
   algorithm = 4,
@@ -356,7 +359,7 @@ seu_singlet_myelo <- seu_normalize_var_scale_pca(
 )
 seu_DimPlot(
   seu_singlet_myelo,
-  reduction = "umap.pca.sct",
+  reduction = "umap.myelo.pca.sct",
   group.by = c("cluster.pca.myelo"),
   show = TRUE,
   # save_path = "plots/temp",
@@ -367,7 +370,7 @@ seu_FeaturePlot(
   seu_singlet_myelo,
   assay = "SCT",
   features = c("CD8A", "CD8B"),
-  reduction = "umap.pca.sct",
+  reduction = "umap.myelo.pca.sct",
   color = inferno,
   max.cutoff = NA,
   show = TRUE,
@@ -376,22 +379,21 @@ seu_FeaturePlot(
   ggheight = NA
 )
 
+saveRDS(seu_singlet, "RDS/seu_singlet_temp.rds")
+
 # 13. remove selected clusters ---------------------
 Idents(seu_singlet_myelo) <- "cluster.pca.myelo"
-cells_to_remove <- seu_singlet_myelo[, Idents(seu_singlet_myelo) == 10 | 12 | 13]
-cells_to_remove
-# 3394 samples (to remove)
-
-cells_to_remove <- subset(seu_singlet_myelo, Idents(seu_singlet_myelo) == 10 | 12 | 13)
-cells_to_remove
-
-seu_singlet <- subset(seu_singlet, cells = cells_to_remove, invert = TRUE)
+clusters_to_remove <- subset(seu_singlet_myelo, idents = c(6, 11))
+clusters_to_remove
+# / 411 samples
 
 seu_singlet <- subset(
   seu_singlet,
-  cells = setdiff(Cells(seu_singlet), Cells(cells_to_remove))
+  cells = setdiff(Cells(seu_singlet), Cells(clusters_to_remove))
 )
-# 14. rereun normalize after removing cells/clusters ------------------
+seu_singlet
+
+# 14. rereun normalize after removing CD8 cells from myelo clusters ------------
 seu_singlet
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
@@ -406,6 +408,12 @@ seu_singlet <- seu_normalize_var_scale_pca(
   resolution = 0.5,
   group.singletons = TRUE
 )
+seu_singlet <- NormalizeData(
+  seu_singlet,
+  assay = "ADT",
+  normalization.method = "CLR"
+)
+
 seu_DimPlot(
   seu_singlet,
   reduction = "umap.sct",
@@ -427,6 +435,22 @@ seu_FeaturePlot(
   ggwidth = NA,
   ggheight = NA
 )
+
+# 15. Rerun totalVI after removing CD8 cells from myeloid cluster -----
+## / convert to anndata
+seu_singlet
+adata <- convertFormat(
+  seu_singlet,
+  from = "seurat",
+  to = "anndata",
+  main_layer = "counts",
+  # assay = "SCT",
+  assay = "ADT",
+  drop_single_values = FALSE,
+  outFile = "RDS/seu_singlet_adt_wo-cd8inMyelo_06dec24.h5ad"
+)
+
+
 
 
 
