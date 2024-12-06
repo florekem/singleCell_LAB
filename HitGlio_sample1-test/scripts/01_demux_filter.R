@@ -524,7 +524,7 @@ seu_DimPlot(
 seu_dittoDotPlot(
   seu_singlet,
   vars = vars,
-  group.by = "seurat_clusters"
+  group.by = "seurat_cluster8"
 )
 
 
