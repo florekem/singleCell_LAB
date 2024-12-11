@@ -13,7 +13,7 @@ library(reticulate) # load packages required by leiden algo
 reticulate::use_condaenv("/mnt/sda4/conda/envs/R")
 library(viridis) # colors
 library(DoubletFinder)
-options(future.globals.maxSize = 2.0 * 1e9) # 2GB
+options(future.globals.maxSize = 3.0 * 1e9) # 3GB
 library(sceasy) # convert to anndata, scvi integration
 library(dittoSeq)
 
@@ -45,17 +45,6 @@ VlnPlot(seu_demux, features = "nCount_RNA", pt.size = 0.1, log = TRUE)
 
 seu_singlet <- subset(seu_demux, idents = c("tumor", "csf"))
 head(seu_singlet@meta.data)
-
-# 3. Subset csf and tumor singlets (for tcr analysis) -------
-## / this goes to the script where tcr data in analyzed/
-# seu_singlet_csf <- seu_subset(
-#   seu_singlet,
-#   subset = MULTI_ID == "csf"
-# )
-# seu_singlet_tumor <- seu_subset(
-#   seu_singlet,
-#   subset = MULTI_ID == "tumor"
-# )
 
 # 4. Add quality features --------------------------
 seu_singlet <- add_quality_features(seu_singlet)
@@ -495,6 +484,7 @@ seu_singlet <- seu_normalize_var_scale_pca(
   k.param = 20,
   algorithm = 4,
   resolution = 0.8,
+  # resolution = 1.2,
   group.singletons = FALSE
 )
 
@@ -507,6 +497,29 @@ vars <- macrophages
 vars <- ein_like
 vars <- inpc_like
 vars <- c("CD8A", "CD8B")
+vars <- c("GFAP", "ALDH1L1", "AQP4", "SLC1A2", "CD44", "S100B", "VIM") # astrocytes
+vars <- c("GFAP", "AQP4", "S100B", "VIM")
+
+vars <- c(
+  "CST3", "S100B", "SLC1A3", "HEPN1", "HOPX", "MT3", "SPARCL1", "MLC1", "GFAP",
+  "FABP7", "BCAN", "PON2", "METTL7B", "SPARC", "GATM", "RAMP1", "PMP2", "AQP4",
+  "DBI", "EDNRB", "PTPRZ1", "CLU", "PMP22", "ATP1A2", "S100A16", "HEY1", "PCDHGC3", "TTYH1", "NDRG2", "PRCP", "ATP1B2", "AGT", "PLTP", "GPM6B", "F3", "RAB31", "PPAP2B", "ANXA5", "TSPAN7"
+) # AC-like
+
+vars <- c(
+  "CSTB", "ADM", "BNIP3", "BNIP3L", "ENO2", "FAM162A", "RALA", "CYTIP", "ADAM8",
+  "C15orf48", "CD109", "ENO1", "SCD", "PLP2", "RAB42", "S100A10", "S100A6", "HK2",
+  "SLC2A1", "CXCL8", "LGALS1", "TIMP1", "PLIN2", "CTSL", "LDHA", "NDRG1", "HILPDA",
+  "ERO1A", "NUPR1", "MT2A"
+)
+
+vars <- c("TGFBI", "CD14", "CD163", "SELENOP", "GPNMB")
+
+vars <- c("RPL13", "RPL19", "RPS15", "RPL28", "RPLP1", "RPL35")
+vars <- c("CD83", "CD74", "HLA-DRA", "HLA-DQA1", "DDIT3", "THBS1", "CD69", "FOSB", "TNFAIP3", "ZFP36", "BAG3")
+
+vars <- c("GFAP", "PTPRZ1", "SCG3", "C1orf61", "SOX2", "SOX6", "BCAN", "NOV/AN1", "NRCAM", "TUBB2B")
+
 seu_FeaturePlot(
   seu_singlet,
   assay = "SCT",
@@ -515,22 +528,25 @@ seu_FeaturePlot(
   # reduction = "umap.sct",
   color = inferno,
   max.cutoff = NA,
-  show = TRUE,
-  # save_path = "plots/scv-500-doublets/inpc-like_markers",
-  # ggheight = 30,
-  # ggwidth = 30
+  show = FALSE,
+  save_path = "plots/temp",
+  ggheight = 30,
+  ggwidth = 30
 )
+
 seu_DimPlot(
   seu_singlet,
   reduction = "umap.totalvi.sct",
   # reduction = "umap.sct",
-  group.by = c("MULTI_ID", "cluster.totalvi"),
+  # group.by = c("MULTI_ID", "cluster.totalvi"),
+  group.by = c("my_id"),
   # group.by = c("MULTI_ID", "cluster.sct"),
-  show = TRUE,
-  # save_path = "plots/clusters",
-  ggheight = NA,
-  ggwidth = NA
-)
+  show = FALSE,
+  save_path = "plots/temp",
+  ggheight = 7,
+  ggwidth = 10
+) & NoLegend()
+
 seu_dittoDotPlot(
   seu_singlet,
   vars = vars,
@@ -563,13 +579,39 @@ for (i in seq_along(1:4)) {
 
 saveRDS(seu_singlet, "RDS/06-dec-24_seu_singlet_final_doublet-500_wo-cd8-myelo_sct_totalvi.rds")
 
+
+# viz. proteins
+features <- paste0("TotalSeqC-", c(
+  "CD86", "CD172a", "CD184", "CD59", "CD11b", "CD11c", "CD49d", "CD192", "CD366", "CD74", "CD52", "CD14", "HLA-DR", "CD45"
+))
+features
+seu_FeaturePlot(
+  seu_singlet_myelo_dc, "ADT",
+  reduction = "umap.totalvi.sct",
+  color = inferno,
+  features = features,
+  max.cutoff = NA,
+  show = FALSE,
+  label = FALSE,
+  save_path = "plots/temp.png",
+  ggheight = 15,
+  ggwidth = 15
+)
+
+
+
+
+
+
+
 # 18. AZIMUTH
 library(Azimuth)
 
-?RunAzimuth
+DefaultAssay(seu_singlet) <- "SCT"
+
 seu_singlet_azi <- RunAzimuth(
   seu_singlet,
-  reference = "pbmcref",
+  reference = "humancortexref",
   do.adt = TRUE,
   assay = "SCT",
   query.modality = "SCT"
@@ -584,16 +626,166 @@ Idents(seu_singlet_azi) <- "predicted.celltype.l2"
 seu_DimPlot(
   seu_singlet_azi,
   reduction = "umap.totalvi.sct",
-  group.by = c("predicted.celltype.l2"),
+  group.by = c("cluster.totalvi", "predicted.subclass"),
+  # group.by = c("cluster.totalvi", "predicted.celltype.l2"),
   show = TRUE,
   # save_path = "plots/scv-500-doublets/PBMCref",
   ggheight = NA,
   ggwidth = NA
+) & NoLegend()
+
+
+
+
+# 19. Identify myeloid clusters ------------
+# / subset potentially myeloid/dc clusters
+Idents(seu_singlet_azi) <- "cluster.totalvi"
+seu_singlet_myelo_dc <- subset(seu_singlet_azi, idents = c(4, 7, 6, 12, 20, 5, 24, 21, 22, 10))
+
+Idents(seu_singlet_azi) <- "my_id"
+seu_DimPlot(
+  seu_singlet_myelo_dc,
+  reduction = "umap.totalvi.sct",
+  # group.by = c("cluster.totalvi"),
+  group.by = c("my_id"),
+  show = TRUE,
+  save_path = "plots/temp",
+  ggheight = 6,
+  ggwidth = 6
+)
+Idents(seu_singlet_myelo_dc) <- "my_id"
+Idents(seu_singlet_myelo_dc)
+
+?FindMarkers
+Idents(seu_singlet) <- "cluster.totalvi"
+cluster_4_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 4,
+  min.pct = 0.25
+)
+rownames(cluster_4_markers)[1:100]
+
+cluster_7_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 7,
+  min.pct = 0.25
+)
+rownames(cluster_7_markers)[1:100]
+
+cluster_6_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 6,
+  min.pct = 0.25
+)
+rownames(cluster_6_markers)[1:100]
+
+cluster_12_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 12,
+  min.pct = 0.25
+)
+rownames(cluster_12_markers)[1:100]
+
+cluster_5_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 5,
+  min.pct = 0.25
+)
+rownames(cluster_5_markers)[1:100]
+
+cluster_10_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 10,
+  min.pct = 0.25
+)
+rownames(cluster_10_markers)[1:100]
+
+cluster_20_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 20,
+  min.pct = 0.25
+)
+rownames(cluster_20_markers)[1:100]
+
+cluster_22_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 22,
+  min.pct = 0.25
+)
+rownames(cluster_22_markers)[1:100]
+
+cluster_21_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 21,
+  min.pct = 0.25
+)
+rownames(cluster_21_markers)[1:100]
+
+cluster_24_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 24,
+  min.pct = 0.25
+)
+rownames(cluster_24_markers)[1:100]
+
+
+
+# identify lymphoid clusters -------------------
+Idents(seu_singlet) <- "my_id"
+
+seu_DimPlot(
+  seu_singlet_lymp,
+  reduction = "umap.totalvi.sct",
+  # group.by = c("cluster.totalvi"),
+  group.by = c("my_id"),
+  show = TRUE,
+  save_path = "plots/temp",
+  ggheight = 8,
+  ggwidth = 8
 )
 
+seu_singlet_lymp <- subset(seu_singlet, idents = c(
+  3, 16, 18, 14, 25, 1, 23, 2, 11, 17, 13, 8, 9, 19
+))
 
 
 
+
+
+
+
+
+
+
+
+
+
+cluster_16_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 16,
+  min.pct = 0.25
+)
+
+rownames(cluster_16_markers)[1:100]
+
+cluster_18_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 18,
+  min.pct = 0.25
+)
+rownames(cluster_18_markers)[1:100]
 
 # 15. vizualize clonality ----------------------------------------
 library(scRepertoire)
@@ -633,6 +825,20 @@ seu_singlet <- combineExpression(
 )
 
 colorblind_vector <- hcl.colors(n = 7, palette = "inferno", fixup = TRUE)
+
+seu_DimPlot(
+  seu_singlet,
+  reduction = "umap.totalvi.sct",
+  # group.by = c("cluster.totalvi"),
+  group.by = c("cloneSize"),
+  show = FALSE,
+  label = FALSE,
+  save_path = "plots/temp",
+  ggheight = 6,
+  ggwidth = 8
+)
+
+
 DimPlot(
   seu_singlet,
   reduction = "umap.totalvi.sct",
@@ -642,37 +848,126 @@ DimPlot(
 
 # 16. Final Naming of clusters -------------------------------------
 ## copy seurat_clusters column
-seu_singlet[["my_id"]] <- seu_singlet[["seurat_clusters"]]
+seu_singlet[["my_id"]] <- seu_singlet[["cluster.totalvi"]]
+# seu_singlet_azi[["my_id"]] <- seu_singlet[["cluster.totalvi"]]
 Idents(seu_singlet) <- "my_id"
+# Idents(seu_singlet_azi) <- "my_id"
 seu_singlet$my_id <- plyr::mapvalues(
+  # seu_singlet_azi$my_id <- plyr::mapvalues(
   Idents(seu_singlet),
-  from = c(1:23),
+  from = c(1:25),
   to = c(
-    "CD8",
-    "CD4",
-    "3",
-    "CD11c myelo",
-    "5",
+    "CD8 EM",
+    "CD4 Naive",
     "NK",
-    "CD4",
-    "act. microglia",
-    "monocytes/neutrophils",
-    "CD8",
-    "CD4",
-    "12",
-    "CD4",
-    "CD4",
-    "15",
-    "16",
+    "TAM_1",
+    "Astrocytes",
+    "Monocytes",
+    "TAM_2",
+    "CD8 Naive/CD8 EM (CSF)",
+    "CD4 Naive (CSF)",
+    "pDC",
+    "CD4 CTL EOMES",
+    "cDC",
+    "CD4 TREG",
+    "CD8 TEMRA",
+    "Prolif.",
+    "Neutrophils",
     "17",
-    "18",
+    "TAN",
     "19",
-    "20",
-    "21",
-    "22",
-    "23"
+    "cDC1",
+    "?",
+    "B-cells",
+    "23",
+    "OligoDC",
+    "25"
   )
 )
+
+# 3. Subset csf and tumor singlets (for tcr analysis) -------
+## / this goes to the script where tcr data in analyzed/
+DefaultAssay(seu_singlet) <- "SCT"
+seu_singlet_csf <- subset(
+  seu_singlet,
+  subset = MULTI_ID == "csf"
+)
+seu_singlet_tumor <- subset(
+  seu_singlet,
+  subset = MULTI_ID == "tumor"
+)
+
+seu_singlet_tumor <- combineExpression(
+  combined_tcr,
+  seu_singlet_tumor,
+  cloneCall = "gene",
+  proportion = TRUE
+)
+seu_singlet_csf <- combineExpression(
+  combined_tcr,
+  seu_singlet_csf,
+  cloneCall = "gene",
+  proportion = TRUE
+)
+seu_tumor_tcr4 <- Run.ProjecTILs(
+  seu_singlet_tumor,
+  ref = ref_cd4,
+  ncores = 1
+)
+seu_csf_tcr4 <- Run.ProjecTILs(
+  seu_singlet_csf,
+  ref = ref_cd4,
+  ncores = 1
+)
+seu_tumor_tcr8 <- Run.ProjecTILs(
+  seu_singlet_tumor,
+  ref = ref_cd8,
+  ncores = 1
+)
+seu_csf_tcr8 <- Run.ProjecTILs(
+  seu_singlet_csf,
+  ref = ref_cd8,
+  ncores = 1
+)
+
+
+
+
+p1 <- plot.projection(ref_cd4) + theme(aspect.ratio = 1)
+p2 <- plot.projection(
+  ref_cd4, seu_tumor_tcr4,
+  linesize = 0.3, pointsize = 0.5
+) + theme(aspect.ratio = 1)
+p1 | p2
+
+ggsave("plots/seu_tumor_tcr4.png", p2)
+
+
+
+
+p3 <- plot.statepred.composition(ref_cd8, seu_tumor_tcr8, metric = "Percent")
+ggsave("plots/seu_tumor_tcr4_percent-composition.png", p3,
+  height = 3,
+  width = 5
+)
+
+p4 <- plot.states.radar(
+  ref = ref_cd4, seu_tumor_tcr4, min.cells = 30
+)
+ggsave("plots/seu_tumor_tcr4_genes-radar.png", p4)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # 17. VIZ cycling cells (this should go much earlier)
 test <- RunPCA(seu_singlet, features = c(s_genes, g2m_genes))
@@ -774,3 +1069,46 @@ for (i in seq_along(1:4)) {
   )
 }
 seu_test
+
+vars <- c("GFAP", "PTPRZ1", "SCG3", "C1orf61", "SOX2", "SOX6", "BCAN", "NOV/AN1", "NRCAM", "TUBB2B") # tumor cell
+
+vars <- c("SOX2", "SOX6", "MK167", "TOP2A", "CDC34", "PBK", "UBE2T", "CENPF")
+
+vars <- c("MAG", "CLDN11", "APLP1", "TMEM144", "CNP", "OPALIN", "EDIL3", "LARP6", "MOG", "AMER2", "TUBB4A")
+
+vars <- c("MK167", "STMN1", "TYMS", "TOP2A", "TUBB")
+
+vars <- c("P2RY12", "CX3CR1", "FCGR1A", "CH25H", "CCL4L2")
+
+vars <- c("TGFB1", "CD14", "CD163", "SELENOP", "GPNMB")
+
+vars <- c("ENO1", "SCD", "PLP2", "RAB42", "S100A10", "S100A6", "HK2", "SLC2A1", "CXCL8", "LGALS1", "TIMP1", "PLIN2", "CTSL", "LDHA", "NDRG1", "HILPDA", "ERO1A", "NUPR1", "MT2A")
+
+vars <- c("SPP1", "RGS16", "FSCN1", "HAMP", "BIN1", "IBSP")
+
+vars <- c("IFIT1", "IFI44L", "IFIT3", "IFI16", "IFI44", "FGL2", "HERC5", "IFIT2", "ISG15", "CXCL10", "MX1", "MX2")
+
+vars <- c("APOC1", "APOE", "CD63", "LGALS3", "ACP5", "GCHFR", "OTOA", "PLAG27", "SDS")
+
+vars <- c("CD83", "CD74", "HLA-DRA", "HLA-DQA1", "DDIT3", "THBS1", "CD69", "FOSB", "TNFAIP3", "ZFP36", "BAG3")
+
+vars <- c("RPL13", "RPL19", "RPS15", "RPL28", "RPLP1", "RPL35")
+
+
+DefaultAssay(seu_singlet)
+seu_singlet
+
+seu_singlet_myelo_dc <- Seurat::AddModuleScore(
+  seu_singlet_myelo_dc,
+  features = list(vars),
+  name = "Mg-TAM",
+  layer = scale.data
+)
+
+p4 <- Seurat::VlnPlot(
+  seu_singlet_myelo_dc,
+  "Mg-TAM1",
+) + ggsave("plots/temp.png", p4)
+
+
+colnames(seu_singlet_myelo_dc@meta.data)

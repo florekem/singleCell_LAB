@@ -45,18 +45,20 @@ combined_tcr <- combineTCR(
   filterMulti = FALSE
 )
 
-clonalQuant(
+p6 <- clonalQuant(
   combined_tcr,
   cloneCall = "strict",
   chain = "both",
   scale = TRUE
 )
+ggsave("plots/temp.png", p6)
 
-clonalLength(
+p6 <- clonalLength(
   combined_tcr,
   cloneCall = "aa",
   chain = "both"
 )
+?clonalLength
 
 seu_singlet_tcr <- combineExpression(
   combined_tcr,

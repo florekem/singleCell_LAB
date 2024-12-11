@@ -141,14 +141,15 @@ seu_normalize_var_scale_pca <- function(
 ?RunUMAP
 
 seu_DimPlot <- function(
-    seu, group.by, reduction,
+    seu, group.by, reduction, label = TRUE, label.size = 4,
     show = TRUE, save_path = FALSE, ggwidth = NA, ggheight = NA) {
   plot <- Seurat::DimPlot(
     seu,
     group.by = group.by,
     reduction = reduction,
-    label = TRUE,
-    repel = TRUE
+    label = label,
+    repel = TRUE,
+    label.size = label.size
   )
   if (save_path != FALSE) {
     ggplot2::ggsave(paste0(save_path, ".png"), plot, width = ggwidth, height = ggheight)

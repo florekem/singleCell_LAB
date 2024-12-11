@@ -92,7 +92,22 @@ seu_singlet$signleR_anot <- seu_SingleR$labels
 
 SingleR::plotScoreHeatmap(seu_SingleR)
 
-SingleR::plotDeltaDistribution(seu_SingleR)
+p5 <- SingleR::plotDeltaDistribution(seu_SingleR)
+ggsave("plots/temp.png", p5, width = 6, height = 5)
+
+
+seu_DimPlot(
+  seu_singlet,
+  reduction = "umap.totalvi.sct",
+  # group.by = c("cluster.totalvi"),
+  group.by = c("signleR_anot"),
+  show = TRUE,
+  save_path = "plots/temp",
+  ggheight = 8,
+  ggwidth = 8
+)
+
+
 
 Seurat::DimPlot(
   seu_singlet,
@@ -197,9 +212,9 @@ ref_cd8 <- load.reference.map(
   "/mnt/sda4/singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd8t.rds"
 )
 
-DefaultAssay(seu_singlet) <- "SCT"
+DefaultAssay(seu_singlet_lymp) <- "SCT"
 seu_singlet_cd8 <- ProjecTILs.classifier(
-  query = seu_singlet,
+  query = seu_singlet_lymp,
   ref = ref_cd8
 )
 # seu_singlet_pTILs_cd8 <- NormalizeData(seu_singlet_pTILs)
@@ -208,13 +223,13 @@ colnames(seu_singlet@meta.data)
 colnames(seu_singlet_cd8@meta.data)
 
 seu_DimPlot(
-  seu_singlet_pTILs_cd4,
-  reduction = "umap.sct",
+  seu_singlet_cd4,
+  reduction = "umap.totalvi.sct",
   group.by = c("functional.cluster"),
   show = FALSE,
-  save_path = "plots/scv-500-doublets/TILs_cd4",
-  ggheight = NA,
-  ggwidth = NA
+  save_path = "plots/temp",
+  ggheight = 8,
+  ggwidth = 8
 )
 # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
 # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
@@ -223,8 +238,8 @@ seu_DimPlot(
 ref_cd4 <- load.reference.map(
   "/mnt/sda4/singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd4t.rds"
 )
-seu_singlet_pTILs_cd4 <- ProjecTILs.classifier(
-  query = seu_singlet,
+seu_singlet_cd4 <- ProjecTILs.classifier(
+  query = seu_singlet_lymp,
   ref = ref_cd4
 )
 # seu_singlet_pTILs_cd4 <- NormalizeData(seu_singlet_pTILs_cd4)
