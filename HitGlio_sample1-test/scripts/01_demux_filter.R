@@ -1112,3 +1112,20 @@ p4 <- Seurat::VlnPlot(
 
 
 colnames(seu_singlet_myelo_dc@meta.data)
+
+# check backgroud signals
+seu_singlet <- readRDS("RDS/06-dec-24_seu_singlet_final_doublet-500_wo-cd8-myelo_sct_totalvi.rds")
+isotype_controls <- c(
+  "TotalSeqC-IgG2a-Ctrl",
+  "TotalSeqC-IgG2b-Ctrl",
+  "TotalSeqC-IgG1-Ctrl",
+  "TotalSeqC-IgG-Ctrl"
+)
+DefaultAssay(seu_singlet) <- "ADT"
+Features(seu_singlet)
+VlnPlot(seu_singlet, features = isotype_controls)
+
+VlnPlot(
+  seu_singlet,
+  features = c("TotalSeqC-CD137", "TotalSeqC-IgG1-Ctrl", "TotalSeqC-IgG-Ctrl")
+)
