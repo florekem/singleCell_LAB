@@ -134,6 +134,7 @@ viz_quality <- function(
     features = .x,
     reduction = reduction,
     color = inferno,
+    label = TRUE,
     max.cutoff = NA
   ) |> print())
 
