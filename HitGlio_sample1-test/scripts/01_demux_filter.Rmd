@@ -1,9 +1,38 @@
-# according to: https://satijalab.org/seurat/articles/hashing_vignette
+---
+title: "HIT-GLIO sample1 analysis #1"
+author: "MF"
+date: "`r Sys.Date()`"
+---
 
-# httpgd::hgd_url() #nolint
+according to: https://satijalab.org/seurat/articles/hashing_vignette
+
+httpgd::hgd_url()
+
+rmarkdown::render("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/01_demux_filter.Rmd")
 
 
-# 0. Libraries --------------------------------------------------
+Analysis:
+1. Load cellranger filtered data
+2. Demux
+3. Subset singlets
+4. Filter
+5. Remove Doublets
+6. totalVI
+7. Analyze totalVI results
+8. Seubset Myeloid clusters and filter CD8 cells
+
+Ale inna analiza może wyglądać inaczej:
+1. Load cellranger raw data
+2. DSB
+3. Doublets
+4. etc
+(w tym przypadku robię branch i modyfikuję analizę)
+
+Ale też może zdażyć się coś takiego, że będę chciał modyfikować niektóre parametry w analizie którą aktualnie uważam za main. W tym przypadku nie chcę liczyć wszystkiego od początku za każdym razem.
+(w tym przypadku uruchamiam chunksy samodzielnie, a jak już coś ustalę, w porównaniu z wynikami poprzednimi, które mam już w html, puszczam knit i jestem w domku.)
+
+# Load Libraries
+```{r Libraries, warning = FALSE, message = FALSE}
 library(Seurat)
 library(ggplot2)
 library(Matrix)
@@ -16,11 +45,11 @@ library(DoubletFinder)
 options(future.globals.maxSize = 3.0 * 1e9) # 3GB
 library(sceasy) # convert to anndata, scvi integration
 library(dittoSeq)
+```
 
-# 1. Paths ------------------------------------------------------
-setwd("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test")
-
-source("scripts/functions.R")
+# Various
+```{r Paths, warning = FALSE, message = FALSE}
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/functions.R")
 
 sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per_sample_outs/sample1/count/sample_filtered_feature_bc_matrix") # nolint
 print(sample_path)
@@ -28,39 +57,48 @@ print(sample_path)
 s_genes <- cc.genes$s.genes
 g2m_genes <- cc.genes$g2m.genes
 
-# 2. Load Seurat Object, Demux ---------------------
+inferno <- viridis::scale_color_viridis(option = "inferno")
+```
+
+# Initial steps (load 10X)
+```{r Initial steps}
 seu <- initial_steps(sample_path)
+```
 
+# Demux
+```{r Demux}
 seu_demux <- initial_demux(seu)
+```
 
+```{r Plot demux result}
 Idents(seu_demux) <- "MULTI_ID"
 
 VlnPlot(seu_demux, features = "nCount_RNA", pt.size = 0.1, log = TRUE)
+```
 
-# head(seu_demux@meta.data)
-# seu_singlet <- seu_subset(
-#   seu_demux,
-#   idents = c("tumor", "csf")
-# )
-
+# Subset singlets
+```{r Subset singlets}
 seu_singlet <- subset(seu_demux, idents = c("tumor", "csf"))
 head(seu_singlet@meta.data)
+```
 
-# 4. Add quality features --------------------------
+```{r Add quality features to singets}
 seu_singlet <- add_quality_features(seu_singlet)
 
-# 5. Add Cell cycle scoring ------------------------------
 seu_singlet <- CellCycleScoring(
   seu_singlet,
   s.features = s_genes,
   g2m.features = g2m_genes,
   set.ident = TRUE
 )
-colnames(seu_singlet@meta.data)
 
-# 6. Normalize befeore quality filtering (check how it looks like)
-# / może od razu SCT?
-# / _temp bo nie bede potrzebowal tego pozniej
+colnames(seu_singlet@meta.data)
+```
+
+# Normalize befeore quality filtering (check how it looks like)
+może od razu SCT?
+"_temp" bo nie bede potrzebowal tego pozniej
+```{r Normalize}
 seu_singlet_q_filt_temp <- seu_normalize_var_scale_pca(
   seu_singlet,
   normalize = "log",
@@ -74,10 +112,34 @@ seu_singlet_q_filt_temp <- seu_normalize_var_scale_pca(
   group.singletons = TRUE
 )
 seu_singlet_q_filt_temp
+colnames(seu_singlet_q_filt_temp@meta.data)
 
-ElbowPlot(seu, ndims = 40)
+ElbowPlot(seu_singlet_q_filt_temp, ndims = 40)
+```
 
-# 7. Vizualize clusters and features before quality filtering ------------------
+```{r Visualize before quality filtering}
+viz_quality <- function(
+    seu, assay, q_features = NULL,
+    reduction, gr_by_features = NULL) {
+  #
+  purrr::walk(gr_by_features, ~ seu_DimPlot(
+    seu,
+    reduction = reduction,
+    group.by = .x
+  ) |> print())
+
+  purrr::walk(q_features, ~ seu_FeaturePlot(
+    seu,
+    assay = assay,
+    features = .x,
+    reduction = reduction,
+    color = inferno,
+    max.cutoff = NA
+  ) |> print())
+
+  purrr::walk(q_features, ~ seu_violin_plot(seu, features = .x) |> print())
+}
+
 q_features <- c(
   "nCount_RNA",
   "nFeature_RNA",
@@ -85,47 +147,51 @@ q_features <- c(
   "percent_ribo",
   "percent_hemoglob"
 )
+gr_by_features <- c("MULTI_ID", "cluster.log")
 
-p2 <- seu_DimPlot(
+viz_quality(
   seu_singlet_q_filt_temp,
-  group.by = "MULTI_ID",
-  reduction = "umap"
+  assay = "RNA", q_features,
+  reduction = "umap.log", gr_by_features
 )
+```
 
-p3 <- seu_FeaturePlot(
-  seu_singlet_q_filt_temp,
-  q_features,
-  reduction = "umap"
-)
-
-p4 <- violin_plot(
-  seu_singlet_q_filt_temp,
-  features = q_features
-)
-
-# 8. Subset cells based on quality assesment -------------
-# subset juz oryginalnego singlet
+# Subset based on quality assesment
+```{r, Subset cells based on quality assesment}
 seu_singlet <- subset(
   seu_singlet,
   subset = nFeature_RNA > 200 &
     nFeature_RNA < 7000 &
     nCount_RNA < 50000 &
-    # nCount_RNA > 30 &
     nCount_RNA > 500 &
     percent_mito < 8
 )
+```
 
-# / subset ADT quantile 0.99
-FeatureScatter(seu_singlet, feature1 = "nFeature_RNA", feature2 = "nCount_ADT")
+subset ADT quantile 0.99
+```{r }
+plot_scatter <- function(data) {
+  FeatureScatter(
+    data,
+    "nFeature_RNA",
+    "nCount_ADT"
+  )
+}
+
+plot_scatter(seu_singlet)
 
 seu_singlet <- subset(
   seu_singlet,
   subset = nCount_ADT < quantile(seu_singlet$nCount_ADT, 0.99)
 )
-seu_singlet
-# 15097
 
-# 9. Normalize using SCT after q filtering for DOUBLET REMOVAL ------------
+plot_scatter(seu_singlet)
+
+seu_singlet
+```
+
+# Remove doublets
+```{r Normalize after q filtering for DOUBLET REMOVAL}
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
   normalize = "sct",
@@ -135,18 +201,18 @@ seu_singlet <- seu_normalize_var_scale_pca(
   dims = 1:10, # change to 10 in case of removing doublets
   k.param = 20,
   algorithm = 4,
-  resolution = 0.8,
+  resolution = 0.8, # res probably could be lower, like 0.2
   group.singletons = TRUE
 )
-
 seu_singlet <- NormalizeData(
   seu_singlet,
   assay = "ADT",
   normalization.method = "CLR"
 )
 seu_singlet
+```
 
-# 7. Remove doublets based on SCT initial clustering --------------------------
+```{r Remove doublets based on SCT initial clustering}
 homotypic_prop <- modelHomotypic(seu_singlet$cluster.sct)
 nExp_poi <- round(0.075 * nrow(seu_singlet)) # estimate ~7.5% doublets
 nExp_poi_adj <- round(nExp_poi * (1 - homotypic_prop))
@@ -168,8 +234,6 @@ seu_singlet <- subset(
   seu_singlet_temp,
   subset = DF.classifications_0.25_0.09_1831 == "Singlet"
 )
-seu_singlet
-## / zostało 13266 samples
 
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
@@ -188,11 +252,25 @@ seu_singlet <- NormalizeData(
   assay = "ADT",
   normalization.method = "CLR"
 )
+
 seu_singlet
+```
 
-saveRDS(seu_singlet, "RDS/seu_singlet_sct-doublet-500_05dec24.rds")
+# Viz. after quality subset and doublet removal
+gr_by_features and reduction changed to .sct
+```{r viz. after q filtering}
+gr_by_features <- c("MULTI_ID", "cluster.sct")
 
-# 8. totalVI model training of doublet-removed seu_singlet ------------------
+viz_quality(
+  seu_singlet,
+  assay = "SCT", q_features,
+  reduction = "umap.sct", gr_by_features
+)
+```
+
+# Export SCT and ADT as anndata for python TotalVI
+This code should be run independently of the pipeline
+```{r totalVI model training of doublet-removed seu_singlet, eval = FALSE}
 DefaultAssay(seu_singlet) <- "SCT"
 
 ## /for the purpose of scVI extract 3k variable genes (stored in scale.data)
@@ -233,9 +311,11 @@ adata <- convertFormat(
   outFile = "RDS/seu_singlet_adt_06-dec-24.h5ad"
 )
 adata
+```
 
-# Go to python, and bring back latent.csv --------------------
-latent <- read.csv("latents/latent-seu_singlet_adt_06-dec-24.csv")
+# After totalVI run, bring back calculated latent
+```{r Go to python and bring back latent.csv}
+latent <- read.csv("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/latents/latent-seu_singlet_adt_06-dec-24.csv")
 
 latent_mtx <- as.matrix(latent)
 rownames(latent_mtx) <- colnames(seu_singlet)
@@ -255,9 +335,11 @@ seu_singlet[["totalvi.sct"]] <- CreateDimReducObject(
 )
 seu_singlet
 colnames(seu_singlet@meta.data)
+```
 
-# 9. clustering po dodaniu latent -------------------------
-# / nie normalizuje bo nie trzeba i nie robie pca poniewaz używam totalvi
+clustering po dodaniu latent
+nie normalizuje bo nie trzeba i nie robie pca poniewaz używam totalvi
+```{r clustering after adding latent}
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
   normalize = FALSE,
@@ -271,68 +353,34 @@ seu_singlet <- seu_normalize_var_scale_pca(
   resolution = 0.1,
   group.singletons = FALSE
 )
+```
 
-# 10. INSPECT features (mainly for CD8) after totalVI latent SCT clustering ----
+# INSPECT features (mainly for CD8) after totalVI latent SCT clustering
+```{r, inspect}
 DefaultAssay(seu_singlet) <- "SCT"
-inferno <- viridis::scale_color_viridis(option = "inferno")
 
-vars <- t_cell_markers
-vars <- macrophages
-vars <- ein_like
-vars <- inpc_like
 vars <- c("CD8A", "CD8B")
-seu_FeaturePlot(
-  seu_singlet,
-  assay = "SCT",
-  features = vars,
-  reduction = "umap.totalvi.sct",
-  # reduction = "umap.sct",
-  color = inferno,
-  max.cutoff = NA,
-  show = TRUE,
-  # save_path = "plots/scv-500-doublets/inpc-like_markers",
-  # ggheight = 30,
-  # ggwidth = 30
+gr_by_features <- c("MULTI_ID", "cluster.totalvi")
+
+viz_quality(seu_singlet,
+  assay = "SCT", q_features = vars,
+  reduction = "umap.totalvi.sct", gr_by_features = gr_by_features
 )
-seu_DimPlot(
-  seu_singlet,
-  reduction = "umap.totalvi.sct",
-  # reduction = "umap.sct",
-  group.by = c("MULTI_ID", "cluster.totalvi"),
-  # group.by = c("MULTI_ID", "cluster.sct"),
-  show = TRUE,
-  # save_path = "plots/clusters",
-  ggheight = NA,
-  ggwidth = NA
-)
+
 seu_dittoDotPlot(
   seu_singlet,
   vars = vars,
-  group.by = "seurat_clusters"
+  group.by = "cluster.totalvi"
 )
 
-# 11. Vizualize ADT features -------------
 DefaultAssay(seu_singlet) <- "ADT"
-features <- Features(seu_singlet)
-length(features)
-f1 <- features[1:10]
-f2 <- features[11:21]
-f3 <- features[22:32]
-f4 <- features[33:42]
+adt_features <- c("TotalSeqC-CD8", "TotalSeqC-CD4")
 
-adt_features <- c("TotalSeqC-CD8")
-seu_FeaturePlot(
-  seu_singlet, "ADT",
-  # reduction = "umap.totalvi.sct",
-  reduction = "umap.totalvi.sct",
-  color = inferno,
-  features = f2,
-  max.cutoff = NA,
-  show = FALSE,
-  save_path = "plots/scv-500-doublets/adt-panel_4",
-  ggheight = 20,
-  ggwidth = 20
+viz_quality(seu_singlet,
+  assay = "ADT", q_features = adt_features,
+  reduction = "umap.totalvi.sct", gr_by_features = NULL
 )
+```
 
 # 12. subset myeloid cluster to filter out cd8 cells -------------------
 DefaultAssay(seu_singlet) <- "SCT"
