@@ -95,6 +95,7 @@ seu_normalize_var_scale_pca <- function(
     seu, normalize, run_pca = TRUE, dims, pca.reduction.name, k.param = 20,
     cluster.name, umap.reduction.name, algorithm, resolution,
     group.singletons = TRUE) {
+  Seurat::DefaultAssay(seu) <- "RNA"
   if (normalize == "log") {
     print("running lognorm...")
     seu <- Seurat::NormalizeData(seu)
