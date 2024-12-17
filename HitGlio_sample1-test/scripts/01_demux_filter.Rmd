@@ -33,25 +33,31 @@ Ale też może zdażyć się coś takiego, że będę chciał modyfikować niekt
 
 # Load Libraries
 ```{r Libraries, warning = FALSE, message = FALSE}
-library(Seurat)
-library(ggplot2)
-library(Matrix)
-library(tidyverse)
-library(clustree)
-library(reticulate) # load packages required by leiden algo
-reticulate::use_condaenv("/mnt/sda4/conda/envs/R")
-library(viridis) # colors
-library(DoubletFinder)
-options(future.globals.maxSize = 3.0 * 1e9) # 3GB
-library(sceasy) # convert to anndata, scvi integration
-library(dittoSeq)
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(DropletUtils)
+  library(ggplot2)
+  library(Matrix)
+  library(tidyverse)
+  library(clustree)
+  library(reticulate) # load packages required by leiden algo
+  reticulate::use_condaenv("/mnt/sda4/conda/envs/R")
+  library(viridis) # colors
+  library(DoubletFinder)
+  options(future.globals.maxSize = 3.0 * 1e9) # 3GB
+  library(sceasy) # convert to anndata, scvi integration
+  library(dittoSeq)
+  library(dsb)
+})
 ```
 
 # Various
 ```{r Paths, warning = FALSE, message = FALSE}
 source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/functions.R")
 
-sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per_sample_outs/sample1/count/sample_filtered_feature_bc_matrix") # nolint
+set.seed(123)
+
+sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/multi/count/raw_feature_bc_matrix") # nolint
 print(sample_path)
 
 s_genes <- cc.genes$s.genes
@@ -61,9 +67,153 @@ inferno <- viridis::scale_color_viridis(option = "inferno")
 ```
 
 # Initial steps (load 10X)
+Loading raw data. joint_bcs as intersect of gex and hto gives the same result as gex and adt. Keeping it as it is.
 ```{r Initial steps}
-seu <- initial_steps(sample_path)
+sparse_matrix <- Seurat::Read10X(data.dir = sample_path)
+gex <- sparse_matrix$`Gene Expression`
+adt <- sparse_matrix$`Antibody Capture`[grepl(
+  "TotalSeqC", rownames(sparse_matrix$`Antibody Capture`)
+), ]
+hto <- sparse_matrix$`Antibody Capture`[grepl(
+  "Hashtag", rownames(sparse_matrix$`Antibody Capture`)
+), ]
+rownames(hto)
+rownames(hto) <- c("tumor", "csf")
+
+joint_bcs <- intersect(colnames(gex), colnames(hto))
+length(joint_bcs)
+
+gex <- gex[, joint_bcs]
+adt <- adt[, joint_bcs]
+
+hto <- as.matrix(hto[, joint_bcs]) # not sure if now or later
 ```
+
+# Identify empty cells with DropletUtils
+```{r dropletutils}
+e_out <- emptyDrops(gex)
+
+is_cell <- e_out$FDR <= 0.01
+table(is_cell)
+
+is_cell[is.na(is_cell)] <- FALSE
+
+gex_filt <- gex[, is_cell]
+
+dim(gex_filt)
+```
+
+```{r viz dropletutils empty drop removal}
+# not working
+tot_counts <- colSums(gex)
+
+df <- tibble(
+  total = tot_counts,
+  rank = row_number(dplyr::desc(total))
+) %>%
+  distinct() %>%
+  dplyr::arrange(rank)
+
+ggplot(df, aes(rank, total)) +
+  geom_path() +
+  scale_x_log10() +
+  scale_y_log10() +
+  annotation_logticks() +
+  labs(x = "Barcode rank", y = "Total UMI count") +
+  theme_bw(base_size = 14)
+```
+
+```{r use the empty droplet as controls for ADT background removing}
+stained_cells <- colnames(gex_filt)
+background <- setdiff(colnames(gex), stained_cells)
+
+length(stained_cells)
+length(background)
+```
+
+# Quality control cells and background droplets
+```{r ddd}
+# create metadata of droplet QC stats used in standard scRNAseq processing
+mtgene <- grep(pattern = "^MT\\.", rownames(gex), value = TRUE) # used below
+
+md <- data.frame(
+  rna.size = log10(Matrix::colSums(gex)),
+  prot.size = log10(Matrix::colSums(adt)),
+  n.gene = Matrix::colSums(gex > 0),
+  mt.prop = Matrix::colSums(gex[mtgene, ]) / Matrix::colSums(gex)
+)
+# add indicator for barcodes Cell Ranger called as cells
+md$drop.class <- ifelse(rownames(md) %in% stained_cells, "cell", "background")
+
+# remove barcodes with no evidence of capture in the experiment, this is log scale
+# so > 1 count
+md <- md[md$rna.size > 0 & md$prot.size > 0, ]
+```
+
+```{r viz quality control}
+# not working
+library(ggside)
+ggplot(md, aes(x = prot.size)) +
+  geom_histogram(aes(fill = drop.class), bins = 50, color = "black") +
+  ggside::geom_xsidedensity(aes(y = after_stat(density), color = drop.class, fill = drop.class),
+    position = "stack", alpha = 0.4
+  ) +
+  scale_xsidey_continuous(minor_breaks = NULL) +
+  theme_bw()
+```
+
+```{r viz background}
+ggplot(md, aes(x = log10(n.gene), y = prot.size)) +
+  theme_bw() +
+  geom_bin2d(bins = 100) +
+  scale_fill_viridis_c(option = "C") +
+  facet_wrap(~drop.class) +
+  geom_hline(yintercept = 2, color = "red", linetype = 2) +
+  geom_vline(xintercept = 2, color = "red", linetype = 2)
+```
+
+```{r subset high quality empty droplets}
+background_drops <- rownames(
+  md[md$prot.size > 1 &
+    md$prot.size < 4 &
+    md$rna.size < 2.5, ]
+)
+background.adt.mtx <- as.matrix(adt[, background_drops])
+dim(background.adt.mtx)
+```
+
+```{r fileter adt count matrix}
+adt_filt <- adt[, stained_cells]
+
+dim(gex_filt)
+dim(adt_filt)
+```
+
+# w tym miejscu spróbowałbym demultiplex
+
+
+```{r }
+# define isotype controls
+
+rownames(adt_filt)
+
+isotype_controls <- c("TotalSeqC_IgG2b_Ctrl", "TotalSeqC_IgG2a_Ctrl", "TotalSeqC_IgG_Ctrl", "TotalSeqC_IgG1_Ctrl")
+
+# normalize and denoise with dsb with
+cells_dsb_norm <- DSBNormalizeProtein(
+  cell_protein_matrix = adt_filt,
+  empty_drop_matrix = background.adt.mtx,
+  denoise.counts = TRUE,
+  use.isotype.control = TRUE,
+  isotype.control.name.vec = isotype_controls
+)
+
+dim(cells_dsb_norm)
+```
+
+
+
+
 
 # Demux
 ```{r Demux}
