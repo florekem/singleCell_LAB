@@ -162,7 +162,7 @@ seu_DimPlot <- function(
 seu_FeaturePlot <- function(
     seu, assay, features, reduction, label = TRUE,
     max.cutoff = NA, color = mycolor2, save_path = FALSE, show = TRUE,
-    ggwidth = NA, ggheight = NA) {
+    ggwidth = NA, ggheight = NA, ...) {
   Seurat::DefaultAssay(seu) <- assay
 
   plot <- Seurat::FeaturePlot(

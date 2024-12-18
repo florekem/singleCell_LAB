@@ -103,133 +103,46 @@ gex_filt <- gex[, is_cell]
 dim(gex_filt)
 ```
 
-```{r viz dropletutils empty drop removal}
-# not working
-tot_counts <- colSums(gex)
+# create seurat object
+```{r create object}
+seu <- Seurat::CreateSeuratObject(
+  counts = Matrix::Matrix(as.matrix(gex_filt), sparse = TRUE)
+)
+seu <- Seurat::NormalizeData(seu)
+seu <- Seurat::FindVariableFeatures(seu, selection.method = "mean.var.plot")
+seu <- Seurat::ScaleData(seu, features = Seurat::VariableFeatures(seu))
 
-df <- tibble(
-  total = tot_counts,
-  rank = row_number(dplyr::desc(total))
-) %>%
-  distinct() %>%
-  dplyr::arrange(rank)
-
-ggplot(df, aes(rank, total)) +
-  geom_path() +
-  scale_x_log10() +
-  scale_y_log10() +
-  annotation_logticks() +
-  labs(x = "Barcode rank", y = "Total UMI count") +
-  theme_bw(base_size = 14)
-```
-
-```{r use the empty droplet as controls for ADT background removing}
 stained_cells <- colnames(gex_filt)
-background <- setdiff(colnames(gex), stained_cells)
+hto_stained <- hto[, stained_cells]
+adt_stained <- adt[, stained_cells]
 
-length(stained_cells)
-length(background)
+seu[["HTO"]] <- Seurat::CreateAssayObject(counts = hto_stained)
+seu[["ADT"]] <- Seurat::CreateAssayObject(counts = adt_stained)
+
+seu <- Seurat::NormalizeData(seu, assay = "HTO", normalization.method = "CLR")
+seu <- Seurat::NormalizeData(seu, assay = "ADT", normalization.method = "CLR")
 ```
 
-# Quality control cells and background droplets
-```{r ddd}
-# create metadata of droplet QC stats used in standard scRNAseq processing
-mtgene <- grep(pattern = "^MT\\.", rownames(gex), value = TRUE) # used below
-
-md <- data.frame(
-  rna.size = log10(Matrix::colSums(gex)),
-  prot.size = log10(Matrix::colSums(adt)),
-  n.gene = Matrix::colSums(gex > 0),
-  mt.prop = Matrix::colSums(gex[mtgene, ]) / Matrix::colSums(gex)
+# Demultiplex
+```{r demux}
+seu <- Seurat::MULTIseqDemux(
+  seu,
+  assay = "HTO",
+  quantile = 0.7,
+  autoThresh = TRUE,
+  maxiter = 5,
+  qrange = seq(from = 0.1, to = 0.9, by = 0.05),
+  verbose = TRUE
 )
-# add indicator for barcodes Cell Ranger called as cells
-md$drop.class <- ifelse(rownames(md) %in% stained_cells, "cell", "background")
-
-# remove barcodes with no evidence of capture in the experiment, this is log scale
-# so > 1 count
-md <- md[md$rna.size > 0 & md$prot.size > 0, ]
-```
-
-```{r viz quality control}
-# not working
-library(ggside)
-ggplot(md, aes(x = prot.size)) +
-  geom_histogram(aes(fill = drop.class), bins = 50, color = "black") +
-  ggside::geom_xsidedensity(aes(y = after_stat(density), color = drop.class, fill = drop.class),
-    position = "stack", alpha = 0.4
-  ) +
-  scale_xsidey_continuous(minor_breaks = NULL) +
-  theme_bw()
-```
-
-```{r viz background}
-ggplot(md, aes(x = log10(n.gene), y = prot.size)) +
-  theme_bw() +
-  geom_bin2d(bins = 100) +
-  scale_fill_viridis_c(option = "C") +
-  facet_wrap(~drop.class) +
-  geom_hline(yintercept = 2, color = "red", linetype = 2) +
-  geom_vline(xintercept = 2, color = "red", linetype = 2)
-```
-
-```{r subset high quality empty droplets}
-background_drops <- rownames(
-  md[md$prot.size > 1 &
-    md$prot.size < 4 &
-    md$rna.size < 2.5, ]
-)
-background.adt.mtx <- as.matrix(adt[, background_drops])
-dim(background.adt.mtx)
-```
-
-```{r fileter adt count matrix}
-adt_filt <- adt[, stained_cells]
-
-dim(gex_filt)
-dim(adt_filt)
-```
-
-# w tym miejscu spróbowałbym demultiplex
-
-
-```{r }
-# define isotype controls
-
-rownames(adt_filt)
-
-isotype_controls <- c("TotalSeqC_IgG2b_Ctrl", "TotalSeqC_IgG2a_Ctrl", "TotalSeqC_IgG_Ctrl", "TotalSeqC_IgG1_Ctrl")
-
-# normalize and denoise with dsb with
-cells_dsb_norm <- DSBNormalizeProtein(
-  cell_protein_matrix = adt_filt,
-  empty_drop_matrix = background.adt.mtx,
-  denoise.counts = TRUE,
-  use.isotype.control = TRUE,
-  isotype.control.name.vec = isotype_controls
-)
-
-dim(cells_dsb_norm)
-```
-
-
-
-
-
-# Demux
-```{r Demux}
-seu_demux <- initial_demux(seu)
-```
-
-```{r Plot demux result}
-Idents(seu_demux) <- "MULTI_ID"
-
-VlnPlot(seu_demux, features = "nCount_RNA", pt.size = 0.1, log = TRUE)
+table(seu$MULTI_ID)
+# tumor 15768
+# csf 1701
 ```
 
 # Subset singlets
 ```{r Subset singlets}
-seu_singlet <- subset(seu_demux, idents = c("tumor", "csf"))
-head(seu_singlet@meta.data)
+seu_singlet <- subset(seu, idents = c("tumor", "csf"))
+seu_singlet
 ```
 
 ```{r Add quality features to singets}
@@ -245,7 +158,7 @@ seu_singlet <- CellCycleScoring(
 colnames(seu_singlet@meta.data)
 ```
 
-# Normalize befeore quality filtering (check how it looks like)
+# Normalize before quality filtering (check how it looks like)
 może od razu SCT?
 "_temp" bo nie bede potrzebowal tego pozniej
 ```{r Normalize, warning = FALSE}
@@ -329,7 +242,7 @@ seu_singlet <- subset(
 ```
 
 subset ADT quantile 0.99
-```{r }
+```{r subset adt quality}
 seu_singlet <- subset(
   seu_singlet,
   subset = nCount_ADT < quantile(seu_singlet$nCount_ADT, 0.99)
@@ -350,14 +263,14 @@ seu_singlet <- seu_normalize_var_scale_pca(
   dims = 1:10, # change to 10 in case of removing doublets
   k.param = 20,
   algorithm = 4,
-  resolution = 0.8, # res probably could be lower, like 0.2
+  resolution = 0.2, # res probably could be lower, like 0.2
   group.singletons = TRUE
 )
-seu_singlet <- NormalizeData(
-  seu_singlet,
-  assay = "ADT",
-  normalization.method = "CLR"
-)
+# seu_singlet <- NormalizeData(
+#   seu_singlet,
+#   assay = "ADT.dsb",
+#   normalization.method = "CLR"
+# )
 seu_singlet
 ```
 
@@ -381,9 +294,10 @@ head(seu_singlet_temp@meta.data)
 
 seu_singlet <- subset(
   seu_singlet_temp,
-  subset = DF.classifications_0.25_0.09_1831 == "Singlet"
+  subset = DF.classifications_0.25_0.09_1651 == "Singlet"
 )
-DefaultAssay(seu_singlet) <- "RNA"
+
+DefaultAssay(seu_singlet) <- "SCT"
 seu_singlet <- seu_normalize_var_scale_pca(
   seu_singlet,
   normalize = "sct",
@@ -393,17 +307,11 @@ seu_singlet <- seu_normalize_var_scale_pca(
   dims = 1:20,
   k.param = 30,
   algorithm = 4,
-  resolution = 0.1,
+  resolution = 0.8,
   group.singletons = FALSE
 )
 
-DefaultAssay(seu_singlet) <- "ADT"
-seu_singlet <- NormalizeData(
-  seu_singlet,
-  assay = "ADT",
-  normalization.method = "CLR"
-)
-
+DefaultAssay(seu_singlet) <- "SCT"
 seu_singlet
 ```
 
@@ -419,15 +327,57 @@ viz_quality(
 )
 ```
 
+# DSB
+```{r subset negative/positive cells}
+# subset empty drop/background and cells
+seu_negative <- subset(
+  seu,
+  idents = "Negative"
+)
+seu_negative
+
+neg_filt <- GetAssayData(
+  seu_negative,
+  layer = "counts", assay = "ADT"
+) |> as.matrix()
+
+adt_filt <- GetAssayData(
+  seu_singlet,
+  layer = "counts", assay = "ADT"
+) |> as.matrix()
+
+dim(neg_filt)
+dim(adt_filt)
+```
+
+```{r Run DSB}
+rownames(adt_filt)
+
+isotype_controls <- c("TotalSeqC-IgG2b-Ctrl", "TotalSeqC-IgG2a-Ctrl", "TotalSeqC-IgG-Ctrl", "TotalSeqC-IgG1-Ctrl")
+
+# normalize and denoise with dsb with
+cells_dsb_norm <- DSBNormalizeProtein(
+  cell_protein_matrix = adt_filt,
+  empty_drop_matrix = neg_filt,
+  denoise.counts = TRUE,
+  use.isotype.control = TRUE,
+  isotype.control.name.vec = isotype_controls
+)
+
+dim(cells_dsb_norm)
+
+seu_singlet[["ADT.dsb"]] <- CreateAssayObject(data = cells_dsb_norm)
+```
+
 # INSPECT features (mainly for CD8) after doublet removal for SCT clustering 
 ```{r, inspect cd8 after doublet removal}
-DefaultAssay(seu_singlet) <- "RNA"
+DefaultAssay(seu_singlet) <- "SCT"
 
 vars <- c("CD8A", "CD8B", "CD4")
 gr_by_features <- c("MULTI_ID", "cluster.sct")
 
 viz_quality(seu_singlet,
-  assay = "RNA", q_features = vars,
+  assay = "SCT", q_features = vars,
   reduction = "umap.sct", gr_by_features = gr_by_features
 )
 
@@ -437,14 +387,146 @@ seu_dittoDotPlot(
   group.by = "cluster.sct"
 )
 
-DefaultAssay(seu_singlet) <- "ADT"
-adt_features <- c("TotalSeqC-CD8", "TotalSeqC-CD4")
+DefaultAssay(seu_singlet) <- "ADT.dsb"
+adt_features <- c("TotalSeqC-CD8", "TotalSeqC-CD4", isotype_controls)
+isotype_controls <- c("TotalSeqC-IgG2b-Ctrl", "TotalSeqC-IgG2a-Ctrl", "TotalSeqC-IgG-Ctrl", "TotalSeqC-IgG1-Ctrl")
 
 viz_quality(seu_singlet,
-  assay = "ADT", q_features = adt_features,
+  assay = "ADT.dsb", q_features = c(adt_features, isotype_controls),
   reduction = "umap.sct", gr_by_features = NULL
 )
 ```
+
+```{r testy}
+viz_quality(seu_singlet,
+  assay = "ADT.dsb", q_features = "TotalSeqC-CD52",
+  reduction = "umap.sct", gr_by_features = NULL
+)
+```
+
+
+# 18. Vizualize ADT features after all that cleanup -------------
+```{r}
+DefaultAssay(seu_singlet) <- "ADT.dsb"
+features <- Features(seu_singlet)
+length(features)
+f1 <- features[1:10]
+f2 <- features[11:21]
+f3 <- features[22:32]
+f4 <- features[33:42]
+f_list <- list(f1, f2, f3, f4)
+
+for (i in seq_along(1:4)) {
+  seu_FeaturePlot(
+    seu_singlet, "ADT.dsb",
+    reduction = "umap.sct",
+    color = inferno,
+    features = f_list[[i]],
+    max.cutoff = NA,
+    show = FALSE,
+    save_path = paste0("plots/18-dec-24_sct_dsb_2/adt-panel_", i),
+    ggheight = 20,
+    ggwidth = 20
+  )
+}
+```
+
+```{r}
+s <- Seurat::FindNeighbors(
+  object = seu_singlet, dims = NULL, assay = "ADT.dsb",
+  features = features, k.param = 30,
+  verbose = FALSE
+)
+
+# direct graph clustering
+s <- Seurat::FindClusters(
+  object = s, resolution = 1,
+  algorithm = 3,
+  graph.name = "ADT.dsb_snn",
+  verbose = FALSE
+)
+
+
+d <- cbind(
+  s@meta.data,
+  as.data.frame(t(s@assays$ADT.dsb@data))
+  # s@reductions$umap@cell.embeddings)
+)
+
+library(magrittr)
+adt_plot <- d %>%
+  dplyr::group_by(ADT.dsb_snn_res.1) %>%
+  dplyr::summarize_at(.vars = features, .funs = median) %>%
+  tibble::remove_rownames() %>%
+  tibble::column_to_rownames("ADT.dsb_snn_res.1")
+# plot a heatmap of the average dsb normalized values for each cluster
+pheatmap::pheatmap(t(adt_plot),
+  color = viridis::viridis(25, option = "B"),
+  fontsize_row = 8, border_color = NA
+)
+```
+
+# Set Thresholds Using Isotype Controls
+should be set for each individual isotype
+```{r}
+# Negative control proteins
+neg_controls <- isotype_controls
+neg_values <- cells_dsb_norm[neg_controls, ]
+
+# Maximum noise level
+threshold <- max(neg_values)
+
+print(threshold) # Use this value as a guide for positivity threshold
+
+cells_dsb_norm[cells_dsb_norm < threshold] <- 0 # no expression below threshold
+
+seu_singlet[["ADT.dsb.threshold"]] <- CreateAssayObject(data = cells_dsb_norm)
+
+DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
+features <- Features(seu_singlet)
+length(features)
+f1 <- features[1:10]
+f2 <- features[11:21]
+f3 <- features[22:32]
+f4 <- features[33:42]
+f_list <- list(f1, f2, f3, f4)
+
+for (i in seq_along(1:4)) {
+  seu_FeaturePlot(
+    seu_singlet, "ADT.dsb.threshold",
+    reduction = "umap.sct",
+    color = inferno,
+    features = f_list[[i]],
+    max.cutoff = NA,
+    show = FALSE,
+    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/18-dec-24_sct_dsb-threshold_", i),
+    ggheight = 20,
+    ggwidth = 20
+  )
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r Plot demux result}
+Idents(seu_demux) <- "MULTI_ID"
+
+VlnPlot(seu_demux, features = "nCount_RNA", pt.size = 0.1, log = TRUE)
+```
+
+
+
+
+
 
 # Subset myeloid cluster to filter out cd8 cells -------------------
 ```{r subset myelo}
