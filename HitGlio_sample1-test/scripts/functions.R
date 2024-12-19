@@ -63,31 +63,41 @@ seu_subset <- function(seu, idents = NULL, subset = NULL) {
   )
 }
 
-add_quality_features <- function(seu) {
-  seu <- Seurat::PercentageFeatureSet(
-    seu,
-    pattern = "^RP[SL]",
-    col.name = "percent_ribo"
-  )
-  seu <- Seurat::PercentageFeatureSet(
-    seu,
-    pattern = "^MT-",
-    col.name = "percent_mito"
-  )
-  seu <- Seurat::PercentageFeatureSet(
-    seu,
-    pattern = "^HB[^(P)]",
-    col.name = "percent_hemoglob"
-  )
-  seu[["log10GenesPerUmi"]] <-
-    log10(seu$nFeature_RNA) / log10(seu$nCount_RNA)
-  return(seu)
-}
-
 seu_violin_plot <- function(seu, features) {
   Seurat::VlnPlot(
     seu,
     features = features
+  )
+}
+
+viz_quality <- function(
+    seu, assay, q_features = NULL,
+    reduction, gr_by_features = NULL) {
+  #
+  purrr::walk(gr_by_features, ~ seu_DimPlot(
+    seu,
+    reduction = reduction,
+    group.by = .x
+  ) |> print())
+
+  purrr::walk(q_features, ~ seu_FeaturePlot(
+    seu,
+    assay = assay,
+    features = .x,
+    reduction = reduction,
+    color = inferno,
+    label = TRUE,
+    max.cutoff = NA
+  ) |> print())
+
+  purrr::walk(q_features, ~ seu_violin_plot(seu, features = .x) |> print())
+}
+
+plot_scatter <- function(data) {
+  Seurat::FeatureScatter(
+    data,
+    "nFeature_RNA",
+    "nCount_ADT"
   )
 }
 

@@ -1,0 +1,98 @@
+
+# 01_Create Seurat Object
+Loading raw data. joint_bcs as intersect of gex and hto gives the same result as gex and adt. Keeping it as it is.
+
+```{r 01_libraries}
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(DropletUtils)
+  library(Matrix)
+  library(dplyr)
+})
+```
+
+## Functions
+```{r 01_functions}
+# Create sparce matricies
+seu_create_sparse_matrix_list <- function(sample_path) {
+  sparse_matrix <- Seurat::Read10X(data.dir = sample_path)
+  gex <- sparse_matrix$`Gene Expression`
+  adt <- sparse_matrix$`Antibody Capture`[grepl(
+    "TotalSeqC", rownames(sparse_matrix$`Antibody Capture`)
+  ), ]
+  hto <- sparse_matrix$`Antibody Capture`[grepl(
+    "Hashtag", rownames(sparse_matrix$`Antibody Capture`)
+  ), ]
+  rownames(hto)
+  rownames(hto) <- c("tumor", "csf")
+
+  joint_bcs <- intersect(colnames(gex), colnames(hto))
+  length(joint_bcs)
+
+  gex <- gex[, joint_bcs]
+  adt <- adt[, joint_bcs]
+
+  hto <- as.matrix(hto[, joint_bcs]) # not sure if now or later
+
+  sparse_matricies_list <- list("gex" = gex, "adt" = adt, "hto" = hto)
+
+  return(sparse_matricies_list)
+}
+# Identify empty cells with DropletUtils
+filter_gex_matrix_dropletutils <- function(sparse_matricies_list) {
+  gex <- sparse_matricies_list$gex
+  hto <- sparse_matricies_list$hto
+  adt <- sparse_matricies_list$adt
+
+  e_out <- DropletUtils::emptyDrops(gex)
+  is_cell <- e_out$FDR <= 0.01
+  table(is_cell)
+  is_cell[is.na(is_cell)] <- FALSE
+  gex_filt <- gex[, is_cell]
+
+  stained_cells <- colnames(gex_filt)
+  hto_filt <- hto[, stained_cells]
+  adt_filt <- adt[, stained_cells]
+
+  filtered_sparse_matricies_list <- list(
+    "gex_filt" = gex_filt, "adt_filt" = adt_filt, "hto_filt" = hto_filt
+  )
+
+  return(filtered_sparse_matricies_list)
+}
+# Create Seurat Object
+create_seurat_object <- function(filtered_sparse_matricies_list) {
+  gex_filt <- filtered_sparse_matricies_list$gex_filt
+  adt_filt <- filtered_sparse_matricies_list$adt_filt
+  hto_filt <- filtered_sparse_matricies_list$hto_filt
+
+  seu <- Seurat::CreateSeuratObject(
+    counts = Matrix::Matrix(as.matrix(gex_filt), sparse = TRUE)
+  )
+  seu <- Seurat::NormalizeData(seu)
+  seu <- Seurat::FindVariableFeatures(seu, selection.method = "mean.var.plot")
+  seu <- Seurat::ScaleData(seu, features = Seurat::VariableFeatures(seu))
+
+  seu[["HTO"]] <- Seurat::CreateAssayObject(counts = hto_filt)
+  seu[["ADT"]] <- Seurat::CreateAssayObject(counts = adt_filt)
+
+  seu <- Seurat::NormalizeData(seu, assay = "HTO", normalization.method = "CLR")
+  seu <- Seurat::NormalizeData(seu, assay = "ADT", normalization.method = "CLR")
+
+  return(seu)
+}
+```
+
+## Run pipeline
+```{r 01_pipeline}
+set.seed(123)
+
+sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/multi/count/raw_feature_bc_matrix") # nolint
+
+seu_raw_object <- sample_path |>
+  seu_create_sparse_matrix_list() |>
+  filter_gex_matrix_dropletutils() |>
+  create_seurat_object()
+```
+
+

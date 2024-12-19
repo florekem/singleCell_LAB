@@ -1,0 +1,19 @@
+---
+title: "HIT-GLIO sample1 analysis #1"
+author: "MF"
+date: "`r Sys.Date()`"
+---
+
+rmarkdown::render("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Main.Rmd")
+
+```{r child = '01_Create_seurat_object.Rmd'}
+```
+
+```{r child = '02_Demultiplex_add_q_features.Rmd'}
+```
+
+```{r child = '03_Quality_filtering.Rmd'}
+```
+
+```{r child = '04_Remove_doublets.Rmd'}
+```

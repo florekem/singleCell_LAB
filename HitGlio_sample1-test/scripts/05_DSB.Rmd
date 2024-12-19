@@ -1,0 +1,155 @@
+# 05 DSB (denoised and scaled by background)
+
+```{r 05_libraries}
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(ggplot2)
+  library(dplyr)
+  library(reticulate) # load packages required by leiden algo
+  reticulate::use_condaenv("/mnt/sda4/conda/envs/R")
+  library(viridis) # colors
+  options(future.globals.maxSize = 3.0 * 1e9) # 3GB
+  library(dsb)
+})
+```
+
+## Imports
+```{r}
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/functions.R")
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Global_vars.R")
+```
+
+## Functions
+```{r 05_functions}
+
+```
+
+
+## Run pipeline
+```{r 05_pipeline}
+set.seed(123)
+
+# subset empty drop/background and cells
+seu_negative <- subset(
+  seu,
+  idents = "Negative"
+)
+seu_negative
+
+neg_filt <- GetAssayData(
+  seu_negative,
+  layer = "counts", assay = "ADT"
+) |> as.matrix()
+
+adt_filt <- GetAssayData(
+  seu_singlet,
+  layer = "counts", assay = "ADT"
+) |> as.matrix()
+
+dim(neg_filt)
+dim(adt_filt)
+
+# normalize and denoise with dsb with
+cells_dsb_norm <- DSBNormalizeProtein(
+  cell_protein_matrix = adt_filt,
+  empty_drop_matrix = neg_filt,
+  denoise.counts = TRUE,
+  use.isotype.control = TRUE,
+  isotype.control.name.vec = isotype_controls
+)
+
+dim(cells_dsb_norm)
+
+seu_singlet[["ADT.dsb"]] <- CreateAssayObject(data = cells_dsb_norm)
+
+# cluster based on protein-only
+s <- Seurat::FindNeighbors(
+  object = seu_singlet, dims = NULL, assay = "ADT.dsb",
+  features = features, k.param = 30,
+  verbose = FALSE
+)
+s <- Seurat::FindClusters(
+  object = s, resolution = 1,
+  algorithm = 3, # direct graph clustering
+  graph.name = "ADT.dsb_snn",
+  verbose = FALSE
+)
+
+d <- cbind(
+  s@meta.data,
+  as.data.frame(t(s@assays$ADT.dsb@data))
+  # s@reductions$umap@cell.embeddings)
+)
+
+adt_plot <- d |>
+  dplyr::group_by(ADT.dsb_snn_res.1) |>
+  dplyr::summarize_at(.vars = features, .funs = median) |>
+  tibble::remove_rownames() |>
+  tibble::column_to_rownames("ADT.dsb_snn_res.1")
+# plot a heatmap of the average dsb normalized values for each cluster
+pheatmap::pheatmap(t(adt_plot),
+  color = viridis::viridis(25, option = "B"),
+  fontsize_row = 8, border_color = NA
+)
+
+# Set Thresholds Using Isotype Controls
+## should be set for each individual isotype
+# isotype_controls -> tu być może trzeba będzie zastąpić - _
+neg_values_igg2b <- cells_dsb_norm[isotype_controls[1], ]
+neg_values_igg2a <- cells_dsb_norm[isotype_controls[2], ]
+neg_values_igg <- cells_dsb_norm[isotype_controls[3], ]
+neg_values_igg1 <- cells_dsb_norm[isotype_controls[4], ]
+
+# Maximum noise level for each isotype
+DefaultAssay(seu_singlet) <- "ADT"
+features <- Features(seu_singlet)
+IgG2a <- c("CD59", "HLA-DR", "CD192", "CD152", "CD357", "172a", "CD197", "CD184", "CD52")
+IgG2b <- c("CD274", "CD11c", "CD86", "TMEM119")
+IgG <- c("CD278")
+IgG1 <- features[!(features %in% c(IgG2a, IgG2b, IgG))] # all the rest
+
+threshold_igg2a <- max(neg_values_igg2a)
+threshold_igg2b <- max(neg_values_igg2b)
+threshold_igg <- max(neg_values_igg)
+threshold_igg1 <- max(neg_values_igg1)
+
+print(threshold_igg2a)
+print(threshold_igg2b)
+print(threshold_igg)
+print(threshold_igg1)
+
+# to trzeba ustalić dla każdego isotypu, ale żeby były w jednym pliku
+cells_dsb_norm[cells_dsb_norm < threshold] <- 0 # no expression below threshold
+
+
+
+
+
+seu_singlet[["ADT.dsb.threshold"]] <- CreateAssayObject(data = cells_dsb_norm)
+
+DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
+length(features)
+f1 <- features[1:10]
+f2 <- features[11:21]
+f3 <- features[22:32]
+f4 <- features[33:42]
+f_list <- list(f1, f2, f3, f4)
+
+for (i in seq_along(1:4)) {
+  seu_FeaturePlot(
+    seu_singlet, "ADT.dsb.threshold",
+    reduction = "umap.sct",
+    color = inferno,
+    features = f_list[[i]],
+    max.cutoff = NA,
+    show = FALSE,
+    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/18-dec-24_sct_dsb-threshold_", i),
+    ggheight = 20,
+    ggwidth = 20
+  )
+}
+```
+
+
+
+
