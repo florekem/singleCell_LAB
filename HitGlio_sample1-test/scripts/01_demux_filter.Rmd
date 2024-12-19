@@ -6,30 +6,13 @@ date: "`r Sys.Date()`"
 
 according to: https://satijalab.org/seurat/articles/hashing_vignette
 
+```{r httpgd}
+library(httpgd)
 httpgd::hgd_url()
+# hgd()
+```
 
 rmarkdown::render("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/01_demux_filter.Rmd")
-
-
-Analysis:
-1. Load cellranger filtered data
-2. Demux
-3. Subset singlets
-4. Filter
-5. Remove Doublets
-6. totalVI
-7. Analyze totalVI results
-8. Seubset Myeloid clusters and filter CD8 cells
-
-Ale inna analiza może wyglądać inaczej:
-1. Load cellranger raw data
-2. DSB
-3. Doublets
-4. etc
-(w tym przypadku robię branch i modyfikuję analizę)
-
-Ale też może zdażyć się coś takiego, że będę chciał modyfikować niektóre parametry w analizie którą aktualnie uważam za main. W tym przypadku nie chcę liczyć wszystkiego od początku za każdym razem.
-(w tym przypadku uruchamiam chunksy samodzielnie, a jak już coś ustalę, w porównaniu z wynikami poprzednimi, które mam już w html, puszczam knit i jestem w domku.)
 
 # Load Libraries
 ```{r Libraries, warning = FALSE, message = FALSE}
@@ -64,99 +47,172 @@ s_genes <- cc.genes$s.genes
 g2m_genes <- cc.genes$g2m.genes
 
 inferno <- viridis::scale_color_viridis(option = "inferno")
+
+q_features <- c(
+  "nCount_RNA",
+  "nFeature_RNA",
+  "percent_mito",
+  "percent_ribo",
+  "percent_hemoglob"
+)
+gr_by_features <- c("MULTI_ID", "cluster.log")
+```
+
+```{r pipeline}
+seu_raw_object <- sample_path |>
+  seu_create_sparse_matricies_list() |>
+  filter_gex_matrix_dropletutils() |>
+  create_seurat_object()
+
+seu_singlet_b4_q_filtering <- demultiplex(seu_raw_object) |>
+  subset_singlets() |>
+  add_quality_features() |>
+  add_cell_cycle_scoring()
+
+seu_singlet_b4_q_filtering_norm <- seu_normalize_var_scale_pca(
+  seu_singlet_b4_q_filtering,
+  normalize = "log",
+  cluster.name = "cluster.log",
+  pca.reduction.name = "pca",
+  umap.reduction.name = "umap.log",
+  dims = 1:30,
+  k.param = 20,
+  algorithm = 4,
+  resolution = 0.5,
+  group.singletons = TRUE
+)
+
+viz_quality(
+  seu_singlet_b4_q_filtering_norm,
+  assay = "RNA", q_features,
+  reduction = "umap.log", gr_by_features
+)
+
+plot_scatter(seu_singlet_b4_q_filtering_norm)
 ```
 
 # Initial steps (load 10X)
 Loading raw data. joint_bcs as intersect of gex and hto gives the same result as gex and adt. Keeping it as it is.
 ```{r Initial steps}
-sparse_matrix <- Seurat::Read10X(data.dir = sample_path)
-gex <- sparse_matrix$`Gene Expression`
-adt <- sparse_matrix$`Antibody Capture`[grepl(
-  "TotalSeqC", rownames(sparse_matrix$`Antibody Capture`)
-), ]
-hto <- sparse_matrix$`Antibody Capture`[grepl(
-  "Hashtag", rownames(sparse_matrix$`Antibody Capture`)
-), ]
-rownames(hto)
-rownames(hto) <- c("tumor", "csf")
+seu_create_sparse_matricies_list <- function(sample_path) {
+  sparse_matrix <- Seurat::Read10X(data.dir = sample_path)
+  gex <- sparse_matrix$`Gene Expression`
+  adt <- sparse_matrix$`Antibody Capture`[grepl(
+    "TotalSeqC", rownames(sparse_matrix$`Antibody Capture`)
+  ), ]
+  hto <- sparse_matrix$`Antibody Capture`[grepl(
+    "Hashtag", rownames(sparse_matrix$`Antibody Capture`)
+  ), ]
+  rownames(hto)
+  rownames(hto) <- c("tumor", "csf")
 
-joint_bcs <- intersect(colnames(gex), colnames(hto))
-length(joint_bcs)
+  joint_bcs <- intersect(colnames(gex), colnames(hto))
+  length(joint_bcs)
 
-gex <- gex[, joint_bcs]
-adt <- adt[, joint_bcs]
+  gex <- gex[, joint_bcs]
+  adt <- adt[, joint_bcs]
 
-hto <- as.matrix(hto[, joint_bcs]) # not sure if now or later
+  hto <- as.matrix(hto[, joint_bcs]) # not sure if now or later
+
+  sparse_matricies_list <- list("gex" = gex, "adt" = adt, "hto" = hto)
+  return(sparse_matricies_list)
+}
 ```
 
 # Identify empty cells with DropletUtils
 ```{r dropletutils}
-e_out <- emptyDrops(gex)
+filter_gex_matrix_dropletutils <- function(sparse_matricies_list) {
+  gex <- sparse_matricies_list$gex
+  hto <- sparse_matricies_list$hto
+  adt <- sparse_matricies_list$adt
 
-is_cell <- e_out$FDR <= 0.01
-table(is_cell)
+  e_out <- emptyDrops(gex)
+  is_cell <- e_out$FDR <= 0.01
+  table(is_cell)
+  is_cell[is.na(is_cell)] <- FALSE
+  gex_filt <- gex[, is_cell]
 
-is_cell[is.na(is_cell)] <- FALSE
+  stained_cells <- colnames(gex_filt)
+  hto_filt <- hto[, stained_cells]
+  adt_filt <- adt[, stained_cells]
 
-gex_filt <- gex[, is_cell]
+  filtered_sparse_matricies_list <- list(
+    "gex_filt" = gex_filt, "adt_filt" = adt_filt, "hto_filt" = hto_filt
+  )
 
-dim(gex_filt)
+  return(filtered_sparse_matricies_list)
+}
 ```
 
 # create seurat object
 ```{r create object}
-seu <- Seurat::CreateSeuratObject(
-  counts = Matrix::Matrix(as.matrix(gex_filt), sparse = TRUE)
-)
-seu <- Seurat::NormalizeData(seu)
-seu <- Seurat::FindVariableFeatures(seu, selection.method = "mean.var.plot")
-seu <- Seurat::ScaleData(seu, features = Seurat::VariableFeatures(seu))
+create_seurat_object <- function(filtered_sparse_matricies_list) {
+  gex_filt <- filtered_sparse_matricies_list$gex_filt
+  adt_filt <- filtered_sparse_matricies_list$adt_filt
+  hto_filt <- filtered_sparse_matricies_list$hto_filt
 
-stained_cells <- colnames(gex_filt)
-hto_stained <- hto[, stained_cells]
-adt_stained <- adt[, stained_cells]
+  seu <- Seurat::CreateSeuratObject(
+    counts = Matrix::Matrix(as.matrix(gex_filt), sparse = TRUE)
+  )
+  seu <- Seurat::NormalizeData(seu)
+  seu <- Seurat::FindVariableFeatures(seu, selection.method = "mean.var.plot")
+  seu <- Seurat::ScaleData(seu, features = Seurat::VariableFeatures(seu))
 
-seu[["HTO"]] <- Seurat::CreateAssayObject(counts = hto_stained)
-seu[["ADT"]] <- Seurat::CreateAssayObject(counts = adt_stained)
+  seu[["HTO"]] <- Seurat::CreateAssayObject(counts = hto_filt)
+  seu[["ADT"]] <- Seurat::CreateAssayObject(counts = adt_filt)
 
-seu <- Seurat::NormalizeData(seu, assay = "HTO", normalization.method = "CLR")
-seu <- Seurat::NormalizeData(seu, assay = "ADT", normalization.method = "CLR")
+  seu <- Seurat::NormalizeData(seu, assay = "HTO", normalization.method = "CLR")
+  seu <- Seurat::NormalizeData(seu, assay = "ADT", normalization.method = "CLR")
+
+  return(seu)
+}
 ```
 
 # Demultiplex
 ```{r demux}
-seu <- Seurat::MULTIseqDemux(
-  seu,
-  assay = "HTO",
-  quantile = 0.7,
-  autoThresh = TRUE,
-  maxiter = 5,
-  qrange = seq(from = 0.1, to = 0.9, by = 0.05),
-  verbose = TRUE
-)
-table(seu$MULTI_ID)
+demultiplex <- function(seu) {
+  seu_demuxed <- Seurat::MULTIseqDemux(
+    seu,
+    assay = "HTO",
+    quantile = 0.7,
+    autoThresh = TRUE,
+    maxiter = 5,
+    qrange = seq(from = 0.1, to = 0.9, by = 0.05),
+    verbose = TRUE
+  )
+  table(seu_demuxed$MULTI_ID)
+
+  return(seu_demuxed)
+}
 # tumor 15768
 # csf 1701
 ```
 
 # Subset singlets
 ```{r Subset singlets}
-seu_singlet <- subset(seu, idents = c("tumor", "csf"))
-seu_singlet
+subset_singlets <- function(seu_demuxed) {
+  seu_singlet <- subset(seu_demuxed, idents = c("tumor", "csf"))
+
+  return(seu_singlet)
+}
 ```
 
 ```{r Add quality features to singets}
 seu_singlet <- add_quality_features(seu_singlet)
-
-seu_singlet <- CellCycleScoring(
-  seu_singlet,
-  s.features = s_genes,
-  g2m.features = g2m_genes,
-  set.ident = TRUE
-)
-
-colnames(seu_singlet@meta.data)
 ```
+
+```{r}
+add_cell_cycle_scoring <- function(seu_singlet) {
+  seu_singlet <- CellCycleScoring(
+    seu_singlet,
+    s.features = s_genes,
+    g2m.features = g2m_genes,
+    set.ident = TRUE
+  )
+}
+```
+
+
 
 # Normalize before quality filtering (check how it looks like)
 może od razu SCT?
@@ -204,21 +260,6 @@ viz_quality <- function(
   purrr::walk(q_features, ~ seu_violin_plot(seu, features = .x) |> print())
 }
 
-q_features <- c(
-  "nCount_RNA",
-  "nFeature_RNA",
-  "percent_mito",
-  "percent_ribo",
-  "percent_hemoglob"
-)
-gr_by_features <- c("MULTI_ID", "cluster.log")
-
-viz_quality(
-  seu_singlet_q_filt_temp,
-  assay = "RNA", q_features,
-  reduction = "umap.log", gr_by_features
-)
-
 plot_scatter <- function(data) {
   FeatureScatter(
     data,
@@ -226,7 +267,6 @@ plot_scatter <- function(data) {
     "nCount_ADT"
   )
 }
-plot_scatter(seu_singlet)
 ```
 
 # Subset based on quality assesment
