@@ -30,10 +30,7 @@ source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Global_vars.R")
 set.seed(123)
 
 # subset empty drop/background and cells
-seu_negative <- subset(
-  seu,
-  idents = "Negative"
-)
+seu_negative <- seu_singlet_negative_list$seu_negative
 seu_negative
 
 neg_filt <- GetAssayData(
@@ -65,7 +62,7 @@ seu_singlet[["ADT.dsb"]] <- CreateAssayObject(data = cells_dsb_norm)
 # cluster based on protein-only
 s <- Seurat::FindNeighbors(
   object = seu_singlet, dims = NULL, assay = "ADT.dsb",
-  features = features, k.param = 30,
+  features = get_features(seu_singlet, "ADT"), k.param = 30,
   verbose = FALSE
 )
 s <- Seurat::FindClusters(
@@ -83,7 +80,9 @@ d <- cbind(
 
 adt_plot <- d |>
   dplyr::group_by(ADT.dsb_snn_res.1) |>
-  dplyr::summarize_at(.vars = features, .funs = median) |>
+  dplyr::summarize_at(
+    .vars = get_features(seu_singlet, "ADT"), .funs = median
+  ) |>
   tibble::remove_rownames() |>
   tibble::column_to_rownames("ADT.dsb_snn_res.1")
 # plot a heatmap of the average dsb normalized values for each cluster
@@ -103,15 +102,20 @@ neg_values_igg1 <- cells_dsb_norm[isotype_controls[4], ]
 # Maximum noise level for each isotype
 DefaultAssay(seu_singlet) <- "ADT"
 features <- Features(seu_singlet)
-IgG2a <- c("CD59", "HLA-DR", "CD192", "CD152", "CD357", "172a", "CD197", "CD184", "CD52")
-IgG2b <- c("CD274", "CD11c", "CD86", "TMEM119")
-IgG <- c("CD278")
+IgG2a <- paste0("TotalSeqC-", c("CD59", "HLA-DR", "CD192", "CD152", "CD357", "172a", "CD197", "CD184", "CD52", "IgG2a-Ctrl"))
+IgG2b <- paste0("TotalSeqC-", c("CD274", "CD11c", "CD86", "TMEM119", "IgG2b-Ctrl"))
+IgG <- paste0("TotalSeqC-", c("CD278", "IgG-Ctrl"))
+features <- get_features(seu_singlet, "ADT")
 IgG1 <- features[!(features %in% c(IgG2a, IgG2b, IgG))] # all the rest
+adt_iso_list <- list(IgG2a, IgG2b, IgG, IgG1)
 
 threshold_igg2a <- max(neg_values_igg2a)
 threshold_igg2b <- max(neg_values_igg2b)
 threshold_igg <- max(neg_values_igg)
 threshold_igg1 <- max(neg_values_igg1)
+threshold_list <- list(
+  threshold_igg2a, threshold_igg2b, threshold_igg, threshold_igg1
+)
 
 print(threshold_igg2a)
 print(threshold_igg2b)
@@ -119,13 +123,32 @@ print(threshold_igg)
 print(threshold_igg1)
 
 # to trzeba ustalić dla każdego isotypu, ale żeby były w jednym pliku
-cells_dsb_norm[cells_dsb_norm < threshold] <- 0 # no expression below threshold
+dim(cells_dsb_norm)
 
+cells_dsb_norm_tb <- as_tibble(cells_dsb_norm, rownames = "adt")
 
+cells_dsb_norm_tb_tresh <- cells_dsb_norm_tb
+for (i in seq_along(adt_iso_list)) {
+  cells_dsb_norm_tb_tresh <- cells_dsb_norm_tb_tresh |>
+    mutate(
+      across(
+        where(is.numeric),
+        ~ ifelse(
+          adt %in% adt_iso_list[[i]] & . < threshold_list[[i]], 0, .
+        )
+      )
+    )
+}
+# convert tb to matrix and set rownames
+rows <- cells_dsb_norm_tb_tresh$adt
+cells_dsb_norm_tb_tresh <- cells_dsb_norm_tb_tresh[, -c(1)]
+cells_dsb_norm_mx_tresh <- as.matrix(cells_dsb_norm_tb_tresh)
+rownames(cells_dsb_norm_mx_tresh) <- rows
 
-
-
-seu_singlet[["ADT.dsb.threshold"]] <- CreateAssayObject(data = cells_dsb_norm)
+# add new normalized and threshold filtered matrix into seurat object
+seu_singlet[["ADT.dsb.threshold"]] <- CreateAssayObject(
+  data = cells_dsb_norm_mx_tresh
+)
 
 DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
 length(features)
@@ -143,7 +166,7 @@ for (i in seq_along(1:4)) {
     features = f_list[[i]],
     max.cutoff = NA,
     show = FALSE,
-    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/18-dec-24_sct_dsb-threshold_", i),
+    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/20-dec-24_sct_dsb-threshold/panel_", i),
     ggheight = 20,
     ggwidth = 20
   )

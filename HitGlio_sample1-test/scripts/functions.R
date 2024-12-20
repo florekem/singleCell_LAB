@@ -203,3 +203,10 @@ seu_dittoDotPlot <- function(seu, vars, group.by) {
     group.by = group.by
   )
 }
+
+get_features <- function(seu, assay) {
+  DefaultAssay(seu) <- assay
+  features <- Features(seu)
+
+  return(features)
+}

@@ -27,8 +27,9 @@ demultiplex <- function(seu) {
 # Subset singlets
 subset_singlets <- function(seu_demuxed) {
   seu_singlet <- subset(seu_demuxed, idents = c("tumor", "csf"))
+  seu_negative <- subset(seu_demuxed, idents = "Negative")
 
-  return(seu_singlet)
+  return(list("seu_singlet" = seu_singlet, "seu_negative" = seu_negative))
 }
 # Add quality features to singets
 add_quality_features <- function(seu) {
@@ -72,9 +73,12 @@ add_cell_cycle_scoring <- function(seu_singlet) {
 ```{r 02_pipeline}
 set.seed(123)
 
-seu_singlet_b4_q_filtering <- demultiplex(seu_raw_object) |>
-  subset_singlets() |>
-  add_quality_features() |>
+seu_singlet_negative_list <- demultiplex(seu_raw_object) |>
+  subset_singlets()
+
+seu_singlet_b4_q_filtering <- add_quality_features(
+  seu_singlet_negative_list$seu_singlet
+) |>
   add_cell_cycle_scoring()
 ```
 

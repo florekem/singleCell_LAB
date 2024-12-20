@@ -17,3 +17,6 @@ rmarkdown::render("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Main
 
 ```{r child = '04_Remove_doublets.Rmd'}
 ```
+
+```{r child = '05_DSB.Rmd'}
+```
