@@ -3,8 +3,12 @@ title: "HIT-GLIO sample1 analysis #1"
 author: "MF"
 date: "`r Sys.Date()`"
 ---
+```{r}
+rmarkdown::render(
+  "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Main.Rmd"
+)
+```
 
-rmarkdown::render("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Main.Rmd")
 
 ```{r child = '01_Create_seurat_object.Rmd'}
 ```

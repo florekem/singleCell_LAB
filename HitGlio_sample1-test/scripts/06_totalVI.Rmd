@@ -1,0 +1,43 @@
+```{r totalVI model training of doublet-removed seu_singlet, eval = FALSE}
+DefaultAssay(seu_singlet) <- "SCT"
+
+
+
+seu_singlet
+adata <- convertFormat(
+  seu_singlet,
+  from = "seurat",
+  to = "anndata",
+  main_layer = "data", # nie mam counts dla
+  main_layer = "counts",
+  # assay = "SCT",
+  assay = "ADT.dsb.threshold",
+  drop_single_values = FALSE,
+  outFile = "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/seu_singlet_adt-dsb_20-dec-24.h5ad"
+)
+adata
+```
+
+
+```{r}
+DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
+
+VariableFeatures(seu_singlet) <- rownames(seu_singlet[["ADT.dsb.threshold"]])
+
+seu_singlet <- ScaleData(seu_singlet)
+
+seu_singlet <- RunPCA(seu_singlet, reduction.name = "apca")
+
+seu_singlet <- FindMultiModalNeighbors(
+  seu_singlet,
+  reduction.list = list("pca", "apca"),
+  dims.list = list(1:30, 1:18), modality.weight.name = "RNA.weight"
+)
+
+seu_singlet <- RunUMAP(seu_singlet, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+
+seu_singlet <- FindClusters(seu_singlet, graph.name = "wsnn", algorithm = 3, resolution = 2, verbose = FALSE)
+
+p1 <- DimPlot(seu_singlet, reduction = "wnn.umap", label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend()
+p1
+```

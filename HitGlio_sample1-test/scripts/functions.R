@@ -1,7 +1,8 @@
 mycolor2 <- viridis::scale_color_viridis(option = "viridis")
 ?scale_color_viridis
 
-initial_steps <- function(sample_path) {
+# Create sparce matricies
+seu_create_sparse_matrix_list <- function(sample_path) {
   sparse_matrix <- Seurat::Read10X(data.dir = sample_path)
   gex <- sparse_matrix$`Gene Expression`
   adt <- sparse_matrix$`Antibody Capture`[grepl(
@@ -12,36 +13,149 @@ initial_steps <- function(sample_path) {
   ), ]
   rownames(hto)
   rownames(hto) <- c("tumor", "csf")
+
   joint_bcs <- intersect(colnames(gex), colnames(hto))
-  head(joint_bcs)
+  length(joint_bcs)
 
   gex <- gex[, joint_bcs]
   adt <- adt[, joint_bcs]
 
-  hto <- as.matrix(hto[, joint_bcs])
+  hto <- as.matrix(hto[, joint_bcs]) # not sure if now or later
 
-  # adt <- adt[, joint_bcs]
-  # ncol(adt)
-  # hto <- hto[, joint_bcs]
-  # ncol(hto)
+  sparse_matricies_list <- list("gex" = gex, "adt" = adt, "hto" = hto)
 
-  seu <- Seurat::CreateSeuratObject(
-    counts = Matrix::Matrix(as.matrix(gex), sparse = TRUE)
+  return(sparse_matricies_list)
+}
+# Identify empty cells with DropletUtils
+filter_gex_matrix_dropletutils <- function(sparse_matricies_list) {
+  gex <- sparse_matricies_list$gex
+  hto <- sparse_matricies_list$hto
+  adt <- sparse_matricies_list$adt
+
+  e_out <- DropletUtils::emptyDrops(gex)
+  is_cell <- e_out$FDR <= 0.01
+  table(is_cell)
+  is_cell[is.na(is_cell)] <- FALSE
+  gex_filt <- gex[, is_cell]
+
+  stained_cells <- colnames(gex_filt)
+  hto_filt <- hto[, stained_cells]
+  adt_filt <- adt[, stained_cells]
+
+  filtered_sparse_matricies_list <- list(
+    "gex_filt" = gex_filt, "adt_filt" = adt_filt, "hto_filt" = hto_filt
   )
 
-  # Demux and subset singlets -----------------------------------
+  return(filtered_sparse_matricies_list)
+}
+# Create Seurat Object
+create_seurat_object <- function(filtered_sparse_matricies_list) {
+  gex_filt <- filtered_sparse_matricies_list$gex_filt
+  adt_filt <- filtered_sparse_matricies_list$adt_filt
+  hto_filt <- filtered_sparse_matricies_list$hto_filt
+
+  seu <- Seurat::CreateSeuratObject(
+    counts = Matrix::Matrix(as.matrix(gex_filt), sparse = TRUE)
+  )
   seu <- Seurat::NormalizeData(seu)
   seu <- Seurat::FindVariableFeatures(seu, selection.method = "mean.var.plot")
   seu <- Seurat::ScaleData(seu, features = Seurat::VariableFeatures(seu))
 
-  # Add HTO data as a new assay independent from RNA ----
-  seu[["HTO"]] <- Seurat::CreateAssayObject(counts = hto)
-  seu[["ADT"]] <- Seurat::CreateAssayObject(counts = adt)
+  seu[["HTO"]] <- Seurat::CreateAssayObject(counts = hto_filt)
+  seu[["ADT"]] <- Seurat::CreateAssayObject(counts = adt_filt)
 
   seu <- Seurat::NormalizeData(seu, assay = "HTO", normalization.method = "CLR")
+  seu <- Seurat::NormalizeData(seu, assay = "ADT", normalization.method = "CLR")
 
   return(seu)
 }
+
+# Demultiplex
+seu_demultiplex <- function(seu) {
+  seu_demuxed <- Seurat::MULTIseqDemux(
+    seu,
+    assay = "HTO",
+    quantile = 0.7,
+    autoThresh = TRUE,
+    maxiter = 5,
+    qrange = seq(from = 0.1, to = 0.9, by = 0.05),
+    verbose = TRUE
+  )
+  table(seu_demuxed$MULTI_ID)
+
+  return(seu_demuxed)
+}
+# Subset singlets
+subset_singlets <- function(seu_demuxed) {
+  seu_singlet <- subset(seu_demuxed, idents = c("tumor", "csf"))
+  seu_negative <- subset(seu_demuxed, idents = "Negative")
+
+  return(list("seu_singlet" = seu_singlet, "seu_negative" = seu_negative))
+}
+# Add quality features to singets
+add_quality_features <- function(seu) {
+  seu <- Seurat::PercentageFeatureSet(
+    seu,
+    pattern = "^RP[SL]",
+    col.name = "percent_ribo"
+  )
+  seu <- Seurat::PercentageFeatureSet(
+    seu,
+    pattern = "^MT-",
+    col.name = "percent_mito"
+  )
+  seu <- Seurat::PercentageFeatureSet(
+    seu,
+    pattern = "^HB[^(P)]",
+    col.name = "percent_hemoglob"
+  )
+  seu[["log10GenesPerUmi"]] <-
+    log10(seu$nFeature_RNA) / log10(seu$nCount_RNA)
+
+  return(seu)
+}
+# Add cell cycle scoring
+add_cell_cycle_scoring <- function(seu_singlet) {
+  s_genes <- Seurat::cc.genes$s.g
+  g2m_genes <- Seurat::cc.genes$g2m.genes
+
+  seu_singlet <- Seurat::CellCycleScoring(
+    seu_singlet,
+    s.features = s_genes,
+    g2m.features = g2m_genes,
+    set.ident = TRUE
+  )
+
+  return(seu_singlet)
+}
+
+remove_doublets_w_dfinder <- function(seu_singlet) {
+  homotypic_prop <- DoubletFinder::modelHomotypic(seu_singlet$cluster.sct)
+  nExp_poi <- round(0.075 * nrow(seu_singlet)) # estimate ~7.5% doublets
+  nExp_poi_adj <- round(nExp_poi * (1 - homotypic_prop))
+
+  seu_singlet <- DoubletFinder::doubletFinder(
+    seu_singlet,
+    PCs = 1:10,
+    pN = 0.25,
+    pK = 0.09,
+    nExp = nExp_poi_adj,
+    reuse.pANN = FALSE,
+    sct = TRUE
+  )
+  colnames(seu_singlet@meta.data)
+  head(seu_singlet@meta.data)
+
+  return(seu_singlet)
+}
+
+
+
+
+
+
+
+
 
 initial_demux <- function(seu) {
   seu <- Seurat::MULTIseqDemux(

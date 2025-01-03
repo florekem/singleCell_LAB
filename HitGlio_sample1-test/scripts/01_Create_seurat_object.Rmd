@@ -1,98 +1,200 @@
-
-# 01_Create Seurat Object
+# 01_Create Raw Seurat Object
 Loading raw data. joint_bcs as intersect of gex and hto gives the same result as gex and adt. Keeping it as it is.
 
 ```{r 01_libraries}
 suppressPackageStartupMessages({
   library(Seurat)
   library(DropletUtils)
+  library(ggplot2)
   library(Matrix)
-  library(dplyr)
+  library(tidyverse)
+  library(clustree)
+  library(reticulate) # load packages required by leiden algo
+  reticulate::use_condaenv("/mnt/sda4/conda/envs/R")
+  library(viridis) # colors
+  library(DoubletFinder)
+  options(future.globals.maxSize = 3.0 * 1e9) # 3GB
+  library(sceasy) # convert to anndata, scvi integration
+  library(dittoSeq)
+  library(dsb)
 })
 ```
 
-## Functions
+## stuff
 ```{r 01_functions}
-# Create sparce matricies
-seu_create_sparse_matrix_list <- function(sample_path) {
-  sparse_matrix <- Seurat::Read10X(data.dir = sample_path)
-  gex <- sparse_matrix$`Gene Expression`
-  adt <- sparse_matrix$`Antibody Capture`[grepl(
-    "TotalSeqC", rownames(sparse_matrix$`Antibody Capture`)
-  ), ]
-  hto <- sparse_matrix$`Antibody Capture`[grepl(
-    "Hashtag", rownames(sparse_matrix$`Antibody Capture`)
-  ), ]
-  rownames(hto)
-  rownames(hto) <- c("tumor", "csf")
-
-  joint_bcs <- intersect(colnames(gex), colnames(hto))
-  length(joint_bcs)
-
-  gex <- gex[, joint_bcs]
-  adt <- adt[, joint_bcs]
-
-  hto <- as.matrix(hto[, joint_bcs]) # not sure if now or later
-
-  sparse_matricies_list <- list("gex" = gex, "adt" = adt, "hto" = hto)
-
-  return(sparse_matricies_list)
-}
-# Identify empty cells with DropletUtils
-filter_gex_matrix_dropletutils <- function(sparse_matricies_list) {
-  gex <- sparse_matricies_list$gex
-  hto <- sparse_matricies_list$hto
-  adt <- sparse_matricies_list$adt
-
-  e_out <- DropletUtils::emptyDrops(gex)
-  is_cell <- e_out$FDR <= 0.01
-  table(is_cell)
-  is_cell[is.na(is_cell)] <- FALSE
-  gex_filt <- gex[, is_cell]
-
-  stained_cells <- colnames(gex_filt)
-  hto_filt <- hto[, stained_cells]
-  adt_filt <- adt[, stained_cells]
-
-  filtered_sparse_matricies_list <- list(
-    "gex_filt" = gex_filt, "adt_filt" = adt_filt, "hto_filt" = hto_filt
-  )
-
-  return(filtered_sparse_matricies_list)
-}
-# Create Seurat Object
-create_seurat_object <- function(filtered_sparse_matricies_list) {
-  gex_filt <- filtered_sparse_matricies_list$gex_filt
-  adt_filt <- filtered_sparse_matricies_list$adt_filt
-  hto_filt <- filtered_sparse_matricies_list$hto_filt
-
-  seu <- Seurat::CreateSeuratObject(
-    counts = Matrix::Matrix(as.matrix(gex_filt), sparse = TRUE)
-  )
-  seu <- Seurat::NormalizeData(seu)
-  seu <- Seurat::FindVariableFeatures(seu, selection.method = "mean.var.plot")
-  seu <- Seurat::ScaleData(seu, features = Seurat::VariableFeatures(seu))
-
-  seu[["HTO"]] <- Seurat::CreateAssayObject(counts = hto_filt)
-  seu[["ADT"]] <- Seurat::CreateAssayObject(counts = adt_filt)
-
-  seu <- Seurat::NormalizeData(seu, assay = "HTO", normalization.method = "CLR")
-  seu <- Seurat::NormalizeData(seu, assay = "ADT", normalization.method = "CLR")
-
-  return(seu)
-}
-```
-
-## Run pipeline
-```{r 01_pipeline}
 set.seed(123)
 
-sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/multi/count/raw_feature_bc_matrix") # nolint
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/functions.R")
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Global_vars.R")
 
-seu_raw_object <- sample_path |>
-  seu_create_sparse_matrix_list() |>
-  filter_gex_matrix_dropletutils() |>
-  create_seurat_object()
+sample_path <- file.path("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/multi/count/raw_feature_bc_matrix") # nolint
 ```
 
+## create sparse matrix
+```{r, warning = FALSE}
+sparse_matrix_list <- seu_create_sparse_matrix_list(sample_path)
+```
+## filter gex with DropletUtils
+```{r}
+sparse_matrix_filt <- filter_gex_matrix_dropletutils(sparse_matrix_list)
+```
+## Create Raw Seurat Object
+```{r}
+seu_raw_object <- create_seurat_object(sparse_matrix_filt)
+```
+## Demultiplex Raw Seurat Object
+```{r}
+seu_raw_object_demux <- seu_demultiplex(seu_raw_object)
+```
+## Subset singlets and negatives
+```{r}
+seu_singlet_negative_list <- subset_singlets(seu_raw_object_demux)
+```
+### Inspect Singlets and negatives
+```{r}
+seu_singlet_negative_list$seu_singlet
+seu_singlet_negative_list$seu_negative
+```
+## Add quality features and cycle scroring
+```{r}
+seu_singlet_b4_q_filtering <- add_quality_features(
+  seu_singlet_negative_list$seu_singlet
+) |>
+  add_cell_cycle_scoring()
+```
 
+# 02_Check Quality of the raw data
+## Normalize
+```{r}
+seu_singlet_b4_q_filt_norm <- seu_normalize_var_scale_pca(
+  seu_singlet_b4_q_filtering,
+  normalize = "log",
+  cluster.name = "cluster.log",
+  pca.reduction.name = "pca",
+  umap.reduction.name = "umap.log",
+  dims = 1:30,
+  k.param = 20,
+  algorithm = 4,
+  resolution = 0.5,
+  group.singletons = TRUE
+)
+```
+## Visualize
+```{r}
+viz_quality(
+  seu_singlet_b4_q_filt_norm,
+  assay = "RNA", q_features,
+  reduction = "umap.log", gr_by_features
+)
+plot_scatter(seu_singlet_b4_q_filt_norm)
+ElbowPlot(seu_singlet_b4_q_filt_norm, ndims = 40)
+```
+
+# 03_Subset cells based on quality assesment
+## Subset
+```{r}
+seu_singlet_q_filt_norm <- subset(
+  seu_singlet_b4_q_filt_norm,
+  subset = nFeature_RNA > 200 &
+    nFeature_RNA < 7000 &
+    nCount_RNA < 50000 &
+    nCount_RNA > 500 &
+    percent_mito < 8 &
+    nCount_ADT < quantile(seu_singlet_b4_q_filt_norm$nCount_ADT, 0.99)
+)
+```
+## Visualize
+```{r}
+viz_quality(
+  seu_singlet_q_filt_norm,
+  assay = "RNA", q_features,
+  reduction = "umap.log", gr_by_features
+)
+plot_scatter(seu_singlet_q_filt_norm)
+```
+
+# 04_Remove Doublets Using DoubletFinder
+## normalize after quality subsetting (SCT)
+```{r, warning = FALSE}
+seu_singlet <- seu_normalize_var_scale_pca(
+  seu_singlet_q_filt_norm,
+  normalize = "sct",
+  cluster.name = "cluster.sct",
+  pca.reduction.name = "pca.sct",
+  umap.reduction.name = "umap.sct",
+  dims = 1:10, # change to 10 in case of removing doublets
+  k.param = 20,
+  algorithm = 4,
+  resolution = 0.2, # res probably could be lower, like 0.2
+  group.singletons = TRUE
+)
+DefaultAssay(seu_singlet) <- "SCT"
+```
+## Remove Doublets
+```{r}
+seu_singlet <- remove_doublets_w_dfinder(seu_singlet)
+```
+## subset tru singlets
+```{r}
+seu_singlet <- subset(
+  seu_singlet,
+  subset = DF.classifications_0.25_0.09_1657 == "Singlet" # generalize it!
+)
+```
+## GEX
+### Normalize and ReCluster
+```{r, warning = FALSE}
+seu_singlet <- seu_normalize_var_scale_pca(
+  seu_singlet,
+  normalize = "sct",
+  cluster.name = "cluster.sct",
+  pca.reduction.name = "pca.sct",
+  umap.reduction.name = "umap.sct",
+  dims = 1:20,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.8,
+  group.singletons = FALSE
+)
+```
+### Visualize
+```{r}
+viz_quality(
+  seu_singlet,
+  assay = "SCT", t_quality,
+  reduction = "umap.sct", gr_by_features_sct
+)
+seu_dittoDotPlot(
+  seu_singlet,
+  vars = t_quality,
+  group.by = "cluster.sct"
+)
+```
+## ADT
+### Normalize using CLR
+```{r}
+DefaultAssay(seu_singlet) <- "ADT"
+seu_singlet <- NormalizeData(
+  seu_singlet,
+  assay = "ADT",
+  normalization.method = "CLR"
+)
+```
+### Visualize
+```{r}
+viz_quality(
+  seu_singlet,
+  assay = "ADT", c(t_adt_quality, isotype_controls),
+  reduction = "umap.sct", gr_by_features_sct
+)
+seu_dittoDotPlot(
+  seu_singlet,
+  vars = t_adt_quality,
+  group.by = "cluster.sct"
+)
+```
+
+```{r}
+httpgd::hgd(width = 600, height = 400)
+plot(1:10)
+```
