@@ -100,7 +100,7 @@ neg_values_igg <- cells_dsb_norm[isotype_controls[3], ]
 neg_values_igg1 <- cells_dsb_norm[isotype_controls[4], ]
 
 # Maximum noise level for each isotype
-DefaultAssay(seu_singlet) <- "ADT"
+DefaultAssay(seu_singlet) <- "ADT.dsb"
 features <- Features(seu_singlet)
 IgG2a <- paste0("TotalSeqC-", c( # nolint
   "CD59", "HLA-DR", "CD192", "CD152",

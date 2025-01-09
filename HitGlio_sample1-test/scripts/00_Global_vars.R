@@ -12,6 +12,8 @@ q_features <- c(
 
 gr_by_features <- c("MULTI_ID", "cluster.log")
 gr_by_features_sct <- c("MULTI_ID", "cluster.sct")
+gr_by_features_sct_myelo <- c("MULTI_ID", "cluster.sct.myelo")
+gr_by_features_totalvi <- c("MULTI_ID", "cluster.totalvi")
 t_quality <- c("CD8A", "CD8B", "CD4")
 t_adt_quality <- c("TotalSeqC-CD8", "TotalSeqC-CD4")
 isotype_controls <- c(

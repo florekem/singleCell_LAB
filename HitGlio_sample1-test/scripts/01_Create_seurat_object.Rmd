@@ -153,7 +153,7 @@ seu_singlet <- seu_normalize_var_scale_pca(
   dims = 1:20,
   k.param = 30,
   algorithm = 4,
-  resolution = 0.8,
+  resolution = 0.1,
   group.singletons = FALSE
 )
 ```
@@ -172,6 +172,7 @@ seu_dittoDotPlot(
 ```
 ## ADT
 ### Normalize using CLR
+only for reference, DSB normalization in the main one
 ```{r}
 DefaultAssay(seu_singlet) <- "ADT"
 seu_singlet <- NormalizeData(
@@ -194,7 +195,330 @@ seu_dittoDotPlot(
 )
 ```
 
-```{r}
-httpgd::hgd(width = 600, height = 400)
-plot(1:10)
+# Remove cd8+ from myeloid clusters
+## Subset myeloid cluster to filter out cd8 cells -------------------
+```{r subset myelo}
+DefaultAssay(seu_singlet) <- "SCT"
+Idents(seu_singlet) <- "cluster.sct"
+
+seu_singlet_myelo <- subset(seu_singlet, idents = c(2, 6, 10, 11))
+DefaultAssay(seu_singlet_myelo) <- "SCT"
+seu_singlet_myelo
+Idents(seu_singlet_myelo)
+
+seu_singlet_myelo <- seu_normalize_var_scale_pca(
+  seu_singlet_myelo,
+  normalize = "sct",
+  cluster.name = "cluster.sct.myelo",
+  run_pca = TRUE,
+  pca.reduction.name = "pca.myelo.sct",
+  umap.reduction.name = "umap.myelo.pca.sct",
+  dims = 1:5,
+  k.param = 10,
+  algorithm = 4,
+  resolution = 1.2,
+  group.singletons = FALSE
+)
 ```
+
+```{r viz isolated myelo clusters}
+viz_quality(seu_singlet_myelo,
+  assay = "SCT", q_features = t_quality,
+  reduction = "umap.myelo.pca.sct", gr_by_features = gr_by_features_sct_myelo
+)
+
+seu_dittoDotPlot(
+  seu_singlet_myelo,
+  vars = vars,
+  group.by = "cluster.sct.myelo"
+)
+
+DefaultAssay(seu_singlet) <- "ADT"
+viz_quality(seu_singlet_myelo,
+  assay = "ADT", q_features = t_adt_quality,
+  reduction = "umap.myelo.pca.sct", gr_by_features = NULL
+)
+```
+
+# Remove selected cells from seu_singlet (original) clusters
+```{r remove cells}
+Idents(seu_singlet_myelo) <- "cluster.sct.myelo"
+clusters_to_remove <- subset(seu_singlet_myelo, idents = c(11, 19, 25, 28))
+clusters_to_remove
+
+seu_singlet <- subset(
+  seu_singlet,
+  cells = setdiff(Cells(seu_singlet), Cells(clusters_to_remove))
+)
+seu_singlet
+```
+
+# Rereun normalize after removing CD8 cells from myelo clusters ------------
+```{r normalize after removing cd8 from myelo clusters}
+seu_singlet <- seu_normalize_var_scale_pca(
+  seu_singlet,
+  normalize = "sct",
+  cluster.name = "cluster.sct",
+  run_pca = TRUE,
+  pca.reduction.name = "pca.sct",
+  umap.reduction.name = "umap.sct",
+  dims = 1:30,
+  k.param = 20,
+  algorithm = 4,
+  resolution = 0.5,
+  group.singletons = TRUE
+)
+seu_singlet <- NormalizeData(
+  seu_singlet,
+  assay = "ADT",
+  normalization.method = "CLR"
+)
+```
+
+```{r viz seu_singlet after removing cd8 from myelo clusters}
+viz_quality(seu_singlet,
+  assay = "SCT", q_features = t_quality,
+  reduction = "umap.sct", gr_by_features = gr_by_features_sct
+)
+
+seu_dittoDotPlot(
+  seu_singlet,
+  vars = vars,
+  group.by = "cluster.sct"
+)
+
+DefaultAssay(seu_singlet) <- "ADT"
+viz_quality(seu_singlet,
+  assay = "ADT", q_features = t_adt_quality,
+  reduction = "umap.sct", gr_by_features = NULL
+)
+```
+
+
+# 06_DSB normalization
+Move here from 05_DSB (and create functions which should go to functions.R)
+
+# 07_Remove proteins that do not pass DSB thresholds
+remove also isotype-controld
+## Strong YES
+### Features to remove
+```{r}
+features_to_remove <- paste0("TotalSeqC-", c(
+  "CD279", "CD161", "CD274", "CD152", "CD223", "CD366", "CD357",
+  "CD80", "CD86", "CD197", "CD184", "CD335", "CD106", "CD314", "TMEM119",
+  "CD137", "CD28",
+  "IgG2b-Ctrl", "IgG2a-Ctrl", "IgG-Ctrl", "IgG1-Ctrl"
+))
+features_to_remove
+valid_features <- intersect(features_to_remove, rownames(seu_singlet))
+```
+
+### Move counts from adt to adt.dsb.threshold
+(ast.dsb.treshold contains only dsb-normalized data)
+```{r}
+seu_singlet[["ADT.dsb.threshold"]]@counts <- seu_singlet[["ADT"]]@counts
+```
+
+### Remove features from both 'counts' and 'data'
+```{r}
+assay <- seu_singlet[["ADT.dsb.threshold"]]
+assay@counts <- assay@counts[!rownames(assay@counts) %in% valid_features, ]
+assay@data <- assay@data[!rownames(assay@data) %in% valid_features, ]
+assay@meta.features <- assay@meta.features[
+  !rownames(assay@meta.features) %in% valid_features,
+]
+```
+
+### Update the assay in the Seurat object
+```{r}
+seu_singlet[["ADT.dsb.threshold"]] <- assay
+seu_singlet <- Seurat::UpdateSeuratObject(seu_singlet)
+```
+
+### Validate
+```{r}
+dim(seu_singlet[["ADT.dsb.threshold"]])
+dim(seu_singlet[["ADT"]])
+dim(seu_singlet[["SCT"]])
+```
+
+# Export counts from SCT and ADT.dsb.threshold for totalVI
+```{r, eval=FALSE}
+seu_singlet
+adata <- convertFormat(
+  seu_singlet,
+  from = "seurat",
+  to = "anndata",
+  main_layer = "counts",
+  # assay = "SCT",
+  assay = "ADT.dsb.threshold",
+  drop_single_values = FALSE,
+  outFile = "seu_singlet_adt_09-jan-25.h5ad"
+)
+adata
+```
+
+# After totalVI run, bring back calculated latent
+```{r Go to python and bring back latent.csv}
+latent <- read.csv("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/latents/latent-seu_singlet_09-jan-24.csv")
+
+latent_mtx <- as.matrix(latent)
+rownames(latent_mtx) <- colnames(seu_singlet)
+latent_mtx <- latent_mtx[, -1] # remove 1st col
+dim(latent_mtx)
+colnames(latent_mtx) <- paste0("totalvi_", 1:20)
+colnames(latent_mtx)
+
+DefaultAssay(seu_singlet) <- "SCT"
+seu_singlet
+colnames(seu_singlet@meta.data)
+
+seu_singlet[["totalvi.sct"]] <- CreateDimReducObject(
+  embeddings = latent_mtx,
+  key = "totalvi_",
+  assay = DefaultAssay(seu_singlet)
+)
+seu_singlet
+colnames(seu_singlet@meta.data)
+```
+
+# Clustering po dodaniu latent
+nie normalizuje bo nie trzeba i nie robie pca poniewaz używam totalvi
+```{r clustering after adding latent}
+seu_singlet <- seu_normalize_var_scale_pca(
+  seu_singlet,
+  normalize = FALSE,
+  cluster.name = "cluster.totalvi",
+  run_pca = FALSE, # not running pca, changing clusters in totalvi reduction
+  pca.reduction.name = "totalvi.sct", # instead of pca
+  umap.reduction.name = "umap.totalvi.sct",
+  dims = 1:20,
+  k.param = 40,
+  algorithm = 4,
+  resolution = 1.4,
+  group.singletons = FALSE
+)
+```
+
+## Visualize
+```{r}
+viz_quality(
+  seu_singlet,
+  assay = "SCT", c(t_quality),
+  reduction = "umap.totalvi.sct", gr_by_features_totalvi
+)
+seu_dittoDotPlot(
+  seu_singlet,
+  vars = t_quality,
+  group.by = "cluster.totalvi"
+)
+```
+```{r}
+Features(seu_singlet)
+
+DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
+
+viz_quality(
+  seu_singlet,
+  assay = "ADT.dsb.threshold", c(t_adt_quality),
+  reduction = "umap.totalvi.sct", gr_by_features_totalvi
+)
+seu_dittoDotPlot(
+  seu_singlet,
+  vars = t_adt_quality,
+  group.by = "cluster.totalvi"
+)
+```
+
+# 18. Vizualize ADT features after all that cleanup
+```{r}
+DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
+features <- get_features(seu_singlet, "ADT.dsb.threshold")
+length(features)
+f1 <- features[1:10]
+f2 <- features[11:21]
+f_list <- list(f1, f2)
+
+for (i in seq_along(f_list)) {
+  seu_FeaturePlot(
+    seu_singlet, "ADT.dsb.threshold",
+    reduction = "umap.totalvi.sct",
+    color = inferno,
+    features = f_list[[i]],
+    max.cutoff = NA,
+    show = FALSE,
+    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/09-jan-25_sct_dsb-threshold/panel_", i), # nolint
+    ggheight = 20,
+    ggwidth = 20
+  )
+}
+```
+
+# Heatmap of top 5 genes in all clusters
+```{r}
+DefaultAssay(seu_singlet) <- "SCT"
+Idents(seu_singlet) <- "cluster.totalvi"
+
+top_genes <- Seurat::FindAllMarkers(
+  seu_singlet,
+  test_use = "MAST", only.pos = TRUE
+) |>
+  group_by(cluster) |>
+  top_n(n = 5, wt = avg_log2FC)
+
+DoHeatmap(seu_singlet, features = unique(top_genes$gene)) +
+  scale_fill_viridis_c()
+```
+
+?DoHeatmap
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+cluster_markers <- FindMarkers(
+  seu_singlet,
+  test_use = "MAST",
+  ident.1 = 1,
+  min.pct = 0.25
+)
+
+cluster_markers_tb <- as_tibble(cluster_markers, rownames = "gene") |>
+  select(gene, avg_log2FC) |>
+  remove_rownames() |>
+  column_to_rownames("gene")
+
+
+pheatmap::pheatmap(t(cluster_markers_tb[1:20, ]),
+  cluster_rows = FALSE, cluster_cols = FALSE,
+  scale = "row",
+  color = viridis::viridis(25, option = "B"),
+  border_color = NA
+)
+
+
+cluster_markers_tb[1:20, ]
+
+rownames(cluster_markers[1:20, ])
+cluster_markers[1:20, 2]
+cluster_markers[1:20, ]
+```
+
