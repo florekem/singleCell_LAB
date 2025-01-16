@@ -342,6 +342,10 @@ dim(seu_singlet[["ADT"]])
 dim(seu_singlet[["SCT"]])
 ```
 
+# should I also repeat SCT normalization here after removing adt features?
+No, for now, but unsure?
+
+
 # Export counts from SCT and ADT.dsb.threshold for totalVI
 ```{r, eval=FALSE}
 seu_singlet

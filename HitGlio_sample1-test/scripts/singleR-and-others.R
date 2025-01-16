@@ -134,10 +134,10 @@ Idents(seu_singlet_azi_cortex) <- "predicted.celltype.l2"
 
 seu_DimPlot(
   seu_singlet_azi,
-  reduction = "umap.sct",
+  reduction = "umap.totalvi.sct",
   group.by = c("predicted.celltype.l2"),
-  show = FALSE,
-  save_path = "plots/scv-500-doublets/PBMCref",
+  show = TRUE,
+  # save_path = "plots/scv-500-doublets/PBMCref",
   ggheight = NA,
   ggwidth = NA
 )
