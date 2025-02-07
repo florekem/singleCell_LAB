@@ -11,30 +11,31 @@ head(tcr_sample)
 dim(tcr_sample)
 
 # analysis of tumor and csf together!!!!
-DefaultAssay(seu_singlet) <- "RNA"
-seu_singlet <- NormalizeData(seu_singlet)
-seu_singlet <- FindVariableFeatures(seu_singlet)
-seu_singlet <- ScaleData(seu_singlet)
+DefaultAssay(seu_singlet_lymp) <- "RNA"
+seu_singlet_lymp <- NormalizeData(seu_singlet)
+seu_singlet_lymp <- FindVariableFeatures(seu_singlet)
+seu_singlet_lymp <- ScaleData(seu_singlet)
 
-seu_singlet <- RunPCA(seu_singlet)
-seu_singlet <- FindNeighbors(
-  seu_singlet,
+seu_singlet_lymp <- RunPCA(seu_singlet)
+seu_singlet_lymp <- FindNeighbors(
+  seu_singlet_lymp,
   reduction = "pca", dims = 1:50
 )
-seu_singlet <- FindClusters(
-  seu_singlet,
+seu_singlet_lymp <- FindClusters(
+  seu_singlet_lymp,
   resolution = 1.1, verbose = FALSE
 )
-seu_singlet <- RunUMAP(
-  seu_singlet,
+seu_singlet_lymp <- RunUMAP(
+  seu_singlet_lymp,
   reduction = "pca", dims = 1:30
 )
 
 DimPlot(
-  seu_singlet,
+  seu_singlet_lymp,
   group.by = "MULTI_ID", reduction = "umap"
 )
 
+tcr_sample_list <- list(tcr_sample)
 
 combined_tcr <- combineTCR(
   tcr_sample_list,
@@ -51,6 +52,8 @@ p6 <- clonalQuant(
   chain = "both",
   scale = TRUE
 )
+p6
+
 ggsave("plots/temp.png", p6)
 
 p6 <- clonalLength(
@@ -58,11 +61,12 @@ p6 <- clonalLength(
   cloneCall = "aa",
   chain = "both"
 )
+p6
 ?clonalLength
 
 seu_singlet_tcr <- combineExpression(
   combined_tcr,
-  seu_singlet,
+  seu_singlet_lymp,
   cloneCall = "gene",
   proportion = TRUE
 )
@@ -72,7 +76,8 @@ colorblind_vector <- hcl.colors(n = 7, palette = "inferno", fixup = TRUE)
 
 DimPlot(
   seu_singlet_tcr,
-  group.by = "cloneSize"
+  group.by = "cloneSize",
+  reduction = "umap.totalvi.sct",
 ) + scale_color_manual(values = rev(colorblind_vector[c(1, 3, 4, 5, 7)]))
 
 

@@ -42,3 +42,47 @@ inpc_like <- c(
   "JAM3", "CORO7", "QARS", "AC013402.2", "CDK5RAP1", "ARHGAP21", "ACADVL",
   "THOC1", "ADAM10", "PXDN"
 )
+
+
+tam_gene_sets <- list( # deepseek R1
+  # Cell Types
+  Monocytes = c("CD14", "FCGR3A", "LYZ", "S100A8", "S100A9"),
+  M_MDSC = c("CD14", "S100A8", "S100A9", "ARG1", "IL4R"),
+  E_MDSC = c("FUT4", "CEACAM8", "MPO", "STAT3"),
+  Macrophages = c("CD68", "CD163", "CSF1R", "MRC1"),
+  M1_TAM = c("IL1B", "TNF", "CD80", "CXCL10"),
+  M2_TAM = c("MRC1", "CD163", "CCL18", "VEGFA"),
+  LAM_TAM = c("TREM2", "APOE", "LPL", "LIPA"),
+
+  # Functional States
+  Hypoxia = c("HIF1A", "VEGFA", "CA9", "SLC2A1"),
+  Chemotaxis = c("CXCL8", "CCL2", "CXCR4", "CCR2"),
+  Angiogenesis = c("VEGFA", "ANGPT1", "PDGFB", "FLT1"),
+  Immune_Suppression = c("CD274", "CTLA4", "IDO1", "IL10")
+)
+
+
+
+wang2024_hypoxic_macrophages <- list(
+  # Cell Types
+  Tumor_cell = c("GFAP", "PTPRZ1", "SCG3", "Clorf61", "SOX2", "SOX6", "BCAN", "NOVA1", "NRCAM", "TUBB2B"),
+  Proliferating_tumor_cell = c("SOX2", "SOX6", "MK167", "TOP2A", "CCDC34", "PBK", "UBE2T", "CENPV", "CENPF"),
+  Oligodendrocyte = c("MAG", "CLDN11", "APLP1", "TMEM144", "CNDP1", "EDIL3", "LARP6", "MOG", "AMER2", "TUBB4A"),
+  NK_T = c("CD3D", "CD3E", "TRBC2", "CD3G", "CD2", "CD52", "TRAC", "ILTR", "TRBC1", "LCK", "SKAP1", "CD48"),
+  Proliferating_NK_T = c("MK167", "TOP2A", "CD3D", "CD3E", "TRBC2", "CD3G"),
+  Pericyte = c("COLL42", "COL6A2", "PDGFRB", "COL3A1", "EDNRA", "LUM", "COL1A1", "PLAC9", "FRZB"),
+  Endothelial_cell = c("ESAM", "FLT1", "RAMP2", "VWF", "EGFL7", "SLC943R2", "CAVIN2", "ADGRL4", "ABLIM1", "ABCB1"),
+  Dendritic_cell = c("AREG", "FCER1A", "CLEC10A", "HLA-DQB1", "HLA-DQA1"),
+  Monocyte = c("FCN1", "VCAN", "CD52", "S100A8", "S100A9"),
+
+  # Tumor-Associated Macrophage (TAM) States
+  Proliferating_TAM = c("MK167", "STMN1", "TYMS", "TOP2A", "TUBB"),
+  Microglia_TAM = c("P2RY12", "CX3CR1", "FCGR1A", "CH25H", "CCL4L2"),
+  Monocyte_derived_TAM = c("TGFBI", "CD14", "CD163", "SELENOP", "GPNMB", "CSTB", "ADM", "BNIP3", "BNIP3L", "ENO2", "FAM162A", "RALA", "CYTIP", "ADAM8", "C15orf48", "CD109"),
+  Hypoxia_TAM = c("ENO1", "SCD", "PLP2", "RAB42", "S100A10", "S100A6", "HK2", "SLC2A1", "CXCL8", "LG4LS1", "TIMP1", "PLIN2", "CTSL", "LDHA", "NDRG1", "HILPDA", "ERO1A", "NUPR1", "MT2A"),
+  Chemotaxis_TAM = c("SPP1", "RGS16", "FSCN1", "HAMP", "BIN1", "IBSP"),
+  IFN_TAM = c("IFIT1", "IF144L", "IFIT3", "IF16", "IF144", "FGL2", "HERC5", "IFIT2", "ISG15", "CXCL10", "MX1", "MX2"),
+  Lipid_TAM = c("APOC1", "APOE", "CD63", "LG4LS3", "ACP5", "GCHFR", "OTOA", "PLA2G7", "SDS"),
+  Phago_AP_TAM = c("CD83", "CD74", "HLA-DRA", "HLA-DQA1", "DDIT3", "THBS1", "CD69", "FOSB", "TNFAIP3", "ZFP36", "BAG3"),
+  Ribosome_TAM = c("RPL13", "RPL19", "RPS15", "RPL28", "RPLP1", "PRL35")
+)

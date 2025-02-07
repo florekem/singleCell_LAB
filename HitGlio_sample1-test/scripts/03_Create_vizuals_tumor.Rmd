@@ -1,0 +1,274 @@
+---
+title: "HIT-GLIO sample1 tumor clusters annotation"
+author: "MF"
+date: "`r Sys.Date()`"
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(ggplot2)
+  library(Matrix)
+  library(tidyverse)
+  library(clustree)
+  library(reticulate) # load packages required by leiden algo
+  reticulate::use_condaenv("/mnt/sda4/conda/envs/R")
+  library(viridis) # colors
+  options(future.globals.maxSize = 3.0 * 1e9) # 3GB
+  library(dittoSeq)
+  library(AUCell)
+  library(GSVA)
+  library(msigdbr)
+})
+```
+
+```{r}
+seu_singlet_tumor <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/30-Jan-2025-sue_singlet_tumor") # nolint
+
+set.seed(123)
+```
+
+# Azimuth
+nie wiem czy jest sens, raczej nie
+```{r}
+library(Azimuth)
+library(SeuratDisk)
+library(SeuratData)
+
+seu_singlet_azi <- RunAzimuth(seu_singlet_tumor, reference = "humancortexref")
+colnames(seu_singlet_azi@meta.data)
+
+seu_singlet_azi <- NormalizeData(seu_singlet_azi)
+Idents(seu_singlet_azi) <- "predicted.class"
+
+seu_DimPlot(
+  seu_singlet_azi,
+  reduction = "umap.tumor.pca.sct",
+  group.by = c("predicted.subclass"),
+  show = TRUE,
+  ggheight = NA,
+  ggwidth = NA
+)
+```
+
+# Diff.Expr. Cluster X vs REST
+Make lognorm for RNA assay. Subset 100 cells.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+DefaultAssay(seu_singlet_tumor) <- "RNA"
+
+seu_singlet_tumor <- seu_normalize_var_scale_pca(
+  seu_singlet_tumor,
+  normalize = "log",
+  cluster.name = "cluster.log.tumor",
+  run_pca = TRUE,
+  pca.reduction.name = "pca.tumor.log",
+  umap.reduction.name = "umap.tumor.pca.log",
+  dims = 1:20,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.3,
+  group.singletons = FALSE
+)
+# keep sct idents on; log is only for DE calculations
+Idents(seu_singlet_tumor) <- "cluster.sct.tumor"
+
+p1 <- DimPlot(seu_singlet_tumor, reduction = "umap.totalvi.sct", label = TRUE)
+
+# for the reference, this is how log clustering looks like
+p2 <- DimPlot(seu_singlet_tumor, reduction = "umap.tumor.pca.log", label = TRUE)
+
+p3 <- DimPlot(seu_singlet_tumor, reduction = "umap.tumor.pca.sct", label = TRUE)
+
+p1 | p2 / p3
+```
+
+## subset even number of cells
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+table(seu_singlet_tumor@active.ident)
+
+cluster_ids <- Idents(seu_singlet_tumor)
+
+# Initialize an empty list to store the subsetted cells
+subset_cells <- list()
+
+# Loop through each cluster and sample cells
+for (cluster in unique(cluster_ids)) {
+  cells_in_cluster <- WhichCells(seu_singlet_tumor, idents = cluster)
+  sampled_cells <- sample(cells_in_cluster, size = 60)
+  # size = min(100, length(cells_in_cluster)) # if no of cell smaller than specified, select max cells in cluster # nolint
+  subset_cells[[cluster]] <- sampled_cells
+}
+
+# Combine the sampled cells into a single vector
+subset_cells_all <- unlist(subset_cells)
+
+# Subset the Seurat object
+seurat_subset <- subset(seu_singlet_tumor, cells = subset_cells_all)
+seurat_subset
+
+seurat_subset <- NormalizeData(seurat_subset)
+seurat_subset <- ScaleData(seurat_subset)
+
+table(seurat_subset@active.ident)
+```
+
+## Compute differentiall expression
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+markers_genes <- FindAllMarkers(
+  seurat_subset,
+  log2FC.threshold = 0.2,
+  test.use = "MAST",
+  min.pct = 0.1,
+  min.diff.pct = 0.2,
+  only.pos = TRUE,
+  # max.cells.per.ident = 50, this subsamples randomly every time, better to subsample on your own. # nolint
+  assay = "RNA"
+)
+```
+
+## draw barlopts with top25
+```{r}
+for (i in unique(top25$cluster)) {
+  # print genes protted on barplots (top25 genes in each cluster)
+  top25 |>
+    group_by(cluster) |>
+    filter(cluster == i) |>
+    select(gene) |>
+    as.vector() |>
+    print()
+
+  barplot(
+    sort(setNames(top25$avg_log2FC, top25$gene)[top25$cluster == i], FALSE),
+    horiz = TRUE,
+    las = 1,
+    main = paste0(i, " vs. rest"),
+    border = "white",
+    yaxs = "i"
+  )
+  abline(v = c(0, 0.25), lty = c(1, 2))
+}
+```
+
+## make heatmap with top 10 genes
+```{r, fig.width=10, fig.height=12}
+top_x <- markers_genes %>%
+  group_by(cluster) %>%
+  slice_min(p_val_adj, n = 10, with_ties = FALSE)
+
+seurat_subset_heatmap <- seurat_subset
+
+seurat_subset_heatmap <- ScaleData(
+  seurat_subset_heatmap,
+  features = as.character(unique(top_x$gene)), assay = "RNA"
+)
+
+DoHeatmap(
+  seurat_subset_heatmap,
+  features = as.character(unique(top_x$gene)),
+  group.by = "cluster.sct.tumor", assay = "RNA"
+)
+```
+
+## make dotplot with top 10 (same viz. as heatmap)
+```{r, fig.width=10, fig.height=15}
+DotPlot(
+  seurat_subset_heatmap,
+  features = rev(as.character(unique(top_x$gene))), group.by = "cluster.sct.tumor", assay = "RNA"
+) + coord_flip() + mycolor2
+```
+
+## validate top10 gene expression on vlnplots
+```{r, fig.width=12, fig.height=9}
+for (i in unique(top_x$cluster)) {
+  top_x_cluster <- top_x |>
+    filter(cluster == i)
+
+  print(paste0("cluster: ", i))
+
+  print(VlnPlot(
+    seu_singlet_tumor,
+    features = top_x_cluster$gene
+  ) + patchwork::plot_annotation(
+    paste0("Cluster ", i, " top genes"),
+    theme = theme(plot.title = element_text(size = 25))
+  ))
+}
+```
+
+## inspect genes
+```{r}
+top_x_inspect <- markers_genes %>%
+  group_by(cluster) %>%
+  slice_min(p_val_adj, n = 50, with_ties = FALSE)
+
+top_x_inspect |>
+  filter(cluster == 3) |>
+  select(gene) |>
+  as.vector()
+```
+
+# GSVA of C2 (currated gene-sets) collection
+made on seurat_subset (randomly selected 60 cells from each cluster, the same as for previous analysis)
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=15}
+gene_sets <- msigdbr(species = "Homo sapiens", category = "C2")
+gene_set_list <- split(gene_sets$gene_symbol, gene_sets$gs_name) # wooolooloo
+
+expr_matrix <- as.matrix(
+  GetAssayData(
+    seurat_subset,
+    layer = "data", assay = "RNA"
+  )
+)
+
+params <- zscoreParam(
+  expr_matrix,
+  gene_set_list,
+  minSize = 10,
+  maxSize = 500
+)
+
+gsva_es <- gsva(
+  params,
+  verbose = TRUE
+)
+
+gsva_cx <- "GSVA_H"
+
+# seu_singlet_myelo[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
+seurat_subset[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
+
+# DefaultAssay(seu_singlet_myelo) <- gsva_Cx
+DefaultAssay(seurat_subset) <- gsva_cx
+
+# avg_pathway_scores <- AverageExpression(seu_singlet_myelo, assays = gsva_Cx)$GSVA
+avg_pathway_scores <- AverageExpression(seurat_subset, assays = gsva_Cx)$GSVA
+
+avg_pathway_scores_filtered <- avg_pathway_scores |>
+  as_tibble(rownames = "pathway") |>
+  filter(pathway == "VERHAAK-GLIOBLASTOMA-MESENCHYMAL" |
+    pathway == "VERHAAK-GLIOBLASTOMA-NEURAL" |
+    pathway == "VERHAAK-GLIOBLASTOMA-PRONEURAL" |
+    pathway == "VERHAAK-GLIOBLASTOMA-CLASSICAL")
+
+print(avg_pathway_scores_filtered_long, n = 30)
+
+avg_pathway_scores_filtered_long <- pivot_longer(
+  avg_pathway_scores_filtered,
+  cols = c(g1, g2, g3, g4, g5, g6)
+)
+
+ggplot(
+  avg_pathway_scores_filtered_long,
+  aes(x = pathway, y = name, size = log(value))
+) +
+  geom_point() +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_color_gradient(low = "black", high = "lightgray") +
+  coord_flip() +
+  labs() +
+  theme_minimal() +
+  theme(
+    axis.text = element_text(size = 11),
+    panel.grid.major = element_line(size = 0.5, color = "grey80")
+  )
+```

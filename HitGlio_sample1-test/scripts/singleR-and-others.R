@@ -208,6 +208,12 @@ p1
 # project TILs label transfer
 library(ProjecTILs)
 
+seu_singlet_lymp <- subset(
+  seu_singlet,
+  idents = c(8, 13, 22, 17, 26, 2, 7, 6, 3, 21, 5, 4, 14, 19)
+)
+
+
 ref_cd8 <- load.reference.map(
   "/mnt/sda4/singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd8t.rds"
 )
@@ -223,14 +229,25 @@ colnames(seu_singlet@meta.data)
 colnames(seu_singlet_cd8@meta.data)
 
 seu_DimPlot(
-  seu_singlet_cd4,
+  seu_singlet_cd8,
   reduction = "umap.totalvi.sct",
   group.by = c("functional.cluster"),
-  show = FALSE,
+  show = TRUE,
   save_path = "plots/temp",
   ggheight = 8,
   ggwidth = 8
 )
+DimPlot(
+  seu_singlet_cd8,
+  reduction = "umap.totalvi.sct",
+  group.by = c("functional.cluster"),
+  label = FALSE,
+  repel = TRUE,
+) + theme(legend.text = element_text(size = 15))
+
+
+
+
 # cols = c("CD4 TCM" = "red", "CD4 TEM" = "blue"),
 # cols = c("CD8 TCM" = "red", "CD8 TEM" = "blue")
 # & NoLegend()
@@ -242,6 +259,23 @@ seu_singlet_cd4 <- ProjecTILs.classifier(
   query = seu_singlet_lymp,
   ref = ref_cd4
 )
+
+DimPlot(
+  seu_singlet_cd4,
+  reduction = "umap.totalvi.sct",
+  group.by = c("functional.cluster"),
+  label = FALSE,
+  repel = TRUE,
+) + theme(legend.text = element_text(size = 15))
+
+
+
+
+
+
+
+
+
 # seu_singlet_pTILs_cd4 <- NormalizeData(seu_singlet_pTILs_cd4)
 
 

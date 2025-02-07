@@ -154,6 +154,8 @@ seu_singlet[["ADT.dsb.threshold"]] <- CreateAssayObject(
   data = cells_dsb_norm_mx_tresh
 )
 
+saveRDS(seu_singlet, "17-jan-2025_seu_singlet.rds")
+
 DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
 length(features)
 f1 <- features[1:10]
@@ -165,12 +167,12 @@ f_list <- list(f1, f2, f3, f4)
 for (i in seq_along(1:4)) {
   seu_FeaturePlot(
     seu_singlet, "ADT.dsb.threshold",
-    reduction = "umap.sct",
+    reduction = "umap.log",
     color = inferno,
     features = f_list[[i]],
     max.cutoff = NA,
     show = FALSE,
-    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/20-dec-24_sct_dsb-threshold/panel_", i),
+    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/16-jan-25_log_dsb-threshold/panel_", i),
     ggheight = 20,
     ggwidth = 20
   )

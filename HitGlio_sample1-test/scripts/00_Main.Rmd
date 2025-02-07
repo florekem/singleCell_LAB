@@ -9,6 +9,12 @@ rmarkdown::render(
 )
 ```
 
+```{r}
+rmarkdown::render(
+  "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/02_Create_vizuals.Rmd"
+)
+```
+
 
 ```{r child = '01_Create_seurat_object.Rmd'}
 ```

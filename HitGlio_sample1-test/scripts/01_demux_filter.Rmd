@@ -670,11 +670,11 @@ seu_singlet$my_id <- plyr::mapvalues(
 ## / this goes to the script where tcr data in analyzed/
 DefaultAssay(seu_singlet) <- "SCT"
 seu_singlet_csf <- subset(
-  seu_singlet,
+  seu_singlet_lymp,
   subset = MULTI_ID == "csf"
 )
 seu_singlet_tumor <- subset(
-  seu_singlet,
+  seu_singlet_lymp,
   subset = MULTI_ID == "tumor"
 )
 

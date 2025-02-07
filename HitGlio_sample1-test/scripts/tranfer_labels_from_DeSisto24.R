@@ -12,10 +12,12 @@ seu_singlet <- readRDS("RDS/seu_singlet_clustered_totalvi-28nov2024.rds")
 # 2. Create seurat object ---------------------------------------
 # test <- read_tsv(file.path(sample_path, "tumor", "exprMatrix.tsv"))
 test <- read_tsv(file.path(sample_path, "immune", "exprMatrix.tsv"))
-
+head(test, n = 1)
+gene_names <- test$gene
 test <- test[, -1]
 test_mtx <- as.matrix(test)
-rownames(test_mtx) <- test$gene
+rownames(test)
+rownames(test_mtx) <- gene_names
 rownames(test_mtx)
 colnames(test_mtx)
 
@@ -57,7 +59,7 @@ unique(Idents(seu))
 table(Idents(seu))
 
 head(seu@meta.data)
-
+Features(seu)
 # 3.1 process new dataset (prepare to integrate) ------------------
 # Integration with log-normalized data
 # it does not work with SCT data?
@@ -82,20 +84,23 @@ seu <- RunUMAP(
 )
 DimPlot(
   seu,
-  group.by = "cell.types", reduction = "umap",
+  group.by = "sample", reduction = "umap",
   label = TRUE
 )
 
+
+
+colnames(seu@meta.data)
 ## 3.2 add sample name metadata (for scvi integration) ----------------
 seu$data_name <- "DeSisto24"
-seu_singlet$data_name <- "sample1"
+seu_singlet_myelo$data_name <- "sample1"
 head(seu@meta.data)
 
 # 4. Merge both datasets --------------------------
 DefaultAssay(seu) <- "RNA"
-DefaultAssay(seu_singlet) <- "RNA"
+DefaultAssay(seu_singlet_myelo) <- "RNA"
 
-merged <- merge(seu_singlet, seu)
+merged <- merge(seu_singlet_myelo, seu)
 merged
 merged <- NormalizeData(merged)
 merged <- FindVariableFeatures(merged)
@@ -138,7 +143,7 @@ DimPlot(
 # 6. Transfer labels -------------------
 transf.anchors <- FindTransferAnchors(
   reference = integrated,
-  query = seu_singlet,
+  query = seu_singlet_myelo,
   dims = 1:10,
   reference.reduction = "pca"
 )
@@ -149,23 +154,23 @@ predictions <- TransferData(
   dims = 1:10
 )
 
-seu_singlet <- AddMetaData(
-  seu_singlet,
+seu_singlet_myelo <- AddMetaData(
+  seu_singlet_myelo,
   metadata = predictions
 )
 
 DefaultAssay(seu_singlet) <- "RNA"
-Idents(seu_singlet) <- "predicted.id"
+Idents(seu_singlet_myelo) <- "predicted.id"
 seu_singlet <- NormalizeData(seu_singlet)
 seu_singlet <- FindVariableFeatures(seu_singlet)
 seu_singlet <- ScaleData(seu_singlet)
 seu_singlet <- RunPCA(seu_singlet)
 
 DimPlot(
-  seu_singlet,
+  seu_singlet_myelo,
   # group.by = c("my_id", "predicted.id"),
   group.by = c("predicted.id"),
-  reduction = "umap",
+  reduction = "wnn.umap",
   label = TRUE
 )
 table(seu_singlet@meta.data$predicted.id)

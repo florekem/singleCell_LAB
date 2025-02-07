@@ -348,94 +348,490 @@ No, for now, but unsure?
 
 # Export counts from SCT and ADT.dsb.threshold for totalVI
 ```{r, eval=FALSE}
-seu_singlet
-adata <- convertFormat(
-  seu_singlet,
-  from = "seurat",
-  to = "anndata",
-  main_layer = "counts",
-  # assay = "SCT",
-  assay = "ADT.dsb.threshold",
-  drop_single_values = FALSE,
-  outFile = "seu_singlet_adt_09-jan-25.h5ad"
-)
-adata
+# seu_singlet
+# adata <- convertFormat(
+#   seu_singlet,
+#   from = "seurat",
+#   to = "anndata",
+#   main_layer = "counts",
+#   # assay = "SCT",
+#   assay = "ADT.dsb.threshold",
+#   drop_single_values = FALSE,
+#   outFile = "seu_singlet_adt_09-jan-25.h5ad"
+# )
+# adata
 ```
 
 # After totalVI run, bring back calculated latent
 ```{r Go to python and bring back latent.csv}
-latent <- read.csv("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/latents/latent-seu_singlet_09-jan-24.csv")
+# latent <- read.csv("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/latents/latent-seu_singlet_09-jan-25.csv")
 
-latent_mtx <- as.matrix(latent)
-rownames(latent_mtx) <- colnames(seu_singlet)
-latent_mtx <- latent_mtx[, -1] # remove 1st col
-dim(latent_mtx)
-colnames(latent_mtx) <- paste0("totalvi_", 1:20)
-colnames(latent_mtx)
+# latent_mtx <- as.matrix(latent)
+# rownames(latent_mtx) <- colnames(seu_singlet)
+# latent_mtx <- latent_mtx[, -1] # remove 1st col
+# dim(latent_mtx)
+# colnames(latent_mtx) <- paste0("totalvi_", 1:20)
+# colnames(latent_mtx)
 
-DefaultAssay(seu_singlet) <- "SCT"
-seu_singlet
-colnames(seu_singlet@meta.data)
+# DefaultAssay(seu_singlet) <- "SCT"
+# seu_singlet
+# colnames(seu_singlet@meta.data)
 
-seu_singlet[["totalvi.sct"]] <- CreateDimReducObject(
-  embeddings = latent_mtx,
-  key = "totalvi_",
-  assay = DefaultAssay(seu_singlet)
-)
-seu_singlet
-colnames(seu_singlet@meta.data)
+# seu_singlet[["totalvi.sct"]] <- CreateDimReducObject(
+#   embeddings = latent_mtx,
+#   key = "totalvi_",
+#   assay = DefaultAssay(seu_singlet)
+# )
+# seu_singlet
+# colnames(seu_singlet@meta.data)
 ```
 
 # Clustering po dodaniu latent
 nie normalizuje bo nie trzeba i nie robie pca poniewaz używam totalvi
 ```{r clustering after adding latent}
-seu_singlet <- seu_normalize_var_scale_pca(
-  seu_singlet,
-  normalize = FALSE,
-  cluster.name = "cluster.totalvi",
-  run_pca = FALSE, # not running pca, changing clusters in totalvi reduction
-  pca.reduction.name = "totalvi.sct", # instead of pca
-  umap.reduction.name = "umap.totalvi.sct",
-  dims = 1:20,
-  k.param = 40,
-  algorithm = 4,
-  resolution = 1.4,
-  group.singletons = FALSE
-)
+# seu_singlet <- seu_normalize_var_scale_pca(
+#   seu_singlet,
+#   normalize = FALSE,
+#   cluster.name = "cluster.totalvi",
+#   run_pca = FALSE, # not running pca, changing clusters in totalvi reduction
+#   pca.reduction.name = "totalvi.sct", # instead of pca
+#   umap.reduction.name = "umap.totalvi.sct",
+#   dims = 1:20,
+#   k.param = 20,
+#   algorithm = 4,
+#   resolution = 1.4,
+#   group.singletons = FALSE
+# )
+# Idents(seu_singlet) <- "cluster.totalvi"
 ```
 
 ## Visualize
 ```{r}
-viz_quality(
-  seu_singlet,
-  assay = "SCT", c(t_quality),
-  reduction = "umap.totalvi.sct", gr_by_features_totalvi
-)
-seu_dittoDotPlot(
-  seu_singlet,
-  vars = t_quality,
-  group.by = "cluster.totalvi"
-)
+# viz_quality(
+#   seu_singlet,
+#   assay = "SCT", c(t_quality),
+#   reduction = "umap.totalvi.sct", gr_by_features_totalvi
+# )
+# seu_dittoDotPlot(
+#   seu_singlet,
+#   vars = t_quality,
+#   group.by = "cluster.totalvi"
+# )
 ```
 ```{r}
-Features(seu_singlet)
+# Features(seu_singlet)
 
-DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
+# DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
 
-viz_quality(
-  seu_singlet,
-  assay = "ADT.dsb.threshold", c(t_adt_quality),
-  reduction = "umap.totalvi.sct", gr_by_features_totalvi
-)
-seu_dittoDotPlot(
-  seu_singlet,
-  vars = t_adt_quality,
-  group.by = "cluster.totalvi"
-)
+# viz_quality(
+#   seu_singlet,
+#   assay = "ADT.dsb.threshold", c(t_adt_quality),
+#   reduction = "umap.totalvi.sct", gr_by_features_totalvi
+# )
+# seu_dittoDotPlot(
+#   seu_singlet,
+#   vars = t_adt_quality,
+#   group.by = "cluster.totalvi"
+# )
 ```
 
 # 18. Vizualize ADT features after all that cleanup
 ```{r}
+# DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
+# features <- get_features(seu_singlet, "ADT.dsb.threshold")
+# length(features)
+# f1 <- features[1:10]
+# f2 <- features[11:21]
+# f_list <- list(f1, f2)
+
+# for (i in seq_along(f_list)) {
+#   seu_FeaturePlot(
+#     seu_singlet, "ADT.dsb.threshold",
+#     reduction = "umap.totalvi.sct",
+#     color = inferno,
+#     features = f_list[[i]],
+#     max.cutoff = NA,
+#     show = FALSE,
+#     save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/09-jan-25_sct_dsb-threshold/panel_", i), # nolint
+#     ggheight = 20,
+#     ggwidth = 20
+#   )
+# }
+```
+
+# Dimplot Final Result
+```{r}
+DimPlot(
+  seu_singlet,
+  reduction = "umap.totalvi.sct",
+  label = TRUE
+)
+```
+
+# Analyze myeloid clusters
+This aims to again subset the main myeloid clusters (C1, C18, C10, C11) + C15, and recluster those cells
+## Subset CD45+ clusters
+```{r}
+DefaultAssay(seu_singlet) <- "SCT"
+# Idents(seu_singlet) <- "cluster.totalvi"
+Idents(seu_singlet) <- "wsnn_res.0.4"
+
+# seu_singlet_myelo <- subset(seu_singlet, idents = c(1, 10, 11, 18, 15))
+seu_singlet_myelo <- subset(
+  seu_singlet,
+  idents = c(16, 3, 22, 17, 23, 6, 9, 15)
+)
+DefaultAssay(seu_singlet_myelo) <- "RNA"
+seu_singlet_myelo
+Idents(seu_singlet_myelo)
+
+seu_singlet_myelo <- seu_normalize_var_scale_pca(
+  seu_singlet_myelo,
+  normalize = "log",
+  cluster.name = "cluster.log.myelo",
+  run_pca = TRUE,
+  pca.reduction.name = "pca.myelo.log",
+  umap.reduction.name = "umap.myelo.pca.log",
+  dims = 1:10,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.2,
+  group.singletons = FALSE
+)
+DimPlot(seu_singlet_myelo, reduction = "umap.myelo.pca.log", label = TRUE)
+
+# lets see what will happen if I'll do NN again on subset
+DefaultAssay(seu_singlet_myelo) <- "ADT.dsb.threshold"
+
+VariableFeatures(seu_singlet_myelo) <- rownames(seu_singlet_myelo)
+seu_singlet_myelo <- seu_singlet_myelo %>%
+  ScaleData() %>%
+  RunPCA(reduction.name = "apca.myelo", verbose = FALSE)
+
+# run WNN
+seu_singlet_myelo <- FindMultiModalNeighbors(
+  seu_singlet_myelo,
+  reduction.list = list("pca.myelo.log", "apca.myelo"),
+  dims.list = list(1:10, 1:8),
+  modality.weight.name = "RNA.weight",
+  verbose = FALSE
+)
+
+# cluster
+seu_singlet_myelo <- FindClusters(
+  seu_singlet_myelo,
+  graph.name = "wsnn",
+  algorithm = 4,
+  resolution = 0.4,
+  verbose = FALSE,
+  random.seed = 1990
+)
+
+seu_singlet_myelo <- RunUMAP(
+  seu_singlet_myelo,
+  nn.name = "weighted.nn",
+  reduction.name = "wnn.umap",
+  reduction.key = "wnnUMAP_"
+)
+
+colnames(seu_singlet_myelo@meta.data)
+Idents(seu_singlet_myelo) <- "wsnn_res.0.4"
+# Idents(seu_singlet) <- "cluster.totalvi"
+
+DimPlot(
+  seu_singlet_myelo,
+  reduction = "wnn.umap",
+  # group.by = "MULTI_ID",
+  label = TRUE
+)
+
+table(seu_singlet_myelo@active.ident)
+
+# for now remove clusters 13, 14, 15 as they have 41, 40 and 5 cells
+seu_singlet_myelo <- subset(seu_singlet_myelo, idents = c(1:12)) # remove
+
+table(seu_singlet_myelo@active.ident)
+
+# go to create vizuals
+```
+
+## remove cluster 11, it has only 81 cells (it is probably redundant) CHECK THIS!
+```{r}
+# table(seu_singlet_myelo@active.ident)
+
+# Idents(seu_singlet_myelo) <- "cluster.sct.myelo"
+
+# seu_singlet_myelo <- subset(seu_singlet_myelo, idents = c(1:10)) # remove C11
+
+# table(seu_singlet_myelo@active.ident)
+
+# 10 clusters, not-normalized after subsetting
+saveRDS(seu_singlet_myelo, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/04-Febb-2025-seu_singlet_myelo") # nolint
+```
+
+# Analyze tumor cluster
+```{r}
+DefaultAssay(seu_singlet) <- "SCT"
+Idents(seu_singlet) <- "cluster.totalvi"
+DimPlot(
+  seu_singlet,
+  reduction = "umap.totalvi.sct",
+  label = TRUE
+)
+
+seu_singlet_tumor <- subset(seu_singlet, idents = c(20, 24, 9, 28, 29, 16))
+DefaultAssay(seu_singlet_tumor) <- "SCT"
+seu_singlet_tumor
+Idents(seu_singlet_tumor)
+
+seu_singlet_tumor <- seu_normalize_var_scale_pca(
+  seu_singlet_tumor,
+  normalize = "sct",
+  cluster.name = "cluster.sct.tumor",
+  run_pca = TRUE,
+  pca.reduction.name = "pca.tumor.sct",
+  umap.reduction.name = "umap.tumor.pca.sct",
+  dims = 1:30,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.3,
+  group.singletons = FALSE
+)
+DimPlot(seu_singlet_tumor, reduction = "umap.tumor.pca.sct", label = TRUE)
+DimPlot(seu_singlet_tumor, reduction = "umap.totalvi.sct", label = TRUE)
+
+saveRDS(seu_singlet_tumor, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/30-Jan-2025-sue_singlet_tumor") # nolint
+```
+
+# additional (may be removed later)
+## check if you subset cluster 20 with myelo clusters, will it cluster together or not
+
+```{r}
+DefaultAssay(seu_singlet) <- "SCT"
+Idents(seu_singlet) <- "cluster.totalvi"
+
+seu_singlet_myelo2 <- subset(seu_singlet, idents = c(1, 10, 11, 18, 15, 20))
+DefaultAssay(seu_singlet_myelo2) <- "SCT"
+seu_singlet_myelo2
+Idents(seu_singlet_myelo2)
+
+seu_singlet_myelo2 <- seu_normalize_var_scale_pca(
+  seu_singlet_myelo2,
+  normalize = "sct",
+  cluster.name = "cluster.sct.myelo",
+  run_pca = TRUE,
+  pca.reduction.name = "pca.myelo.sct",
+  umap.reduction.name = "umap.myelo.pca.sct",
+  dims = 1:30,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 1.0,
+  group.singletons = FALSE
+)
+Idents(seu_singlet_myelo2) <- "cluster.totalvi"
+DimPlot(seu_singlet_myelo2, reduction = "umap.myelo.pca.sct", label = TRUE)
+```
+
+```{r clustering after adding latent}
+seu_singlet <- seu_normalize_var_scale_pca(
+  seu_singlet,
+  normalize = "sct",
+  cluster.name = "cluster.sct.test",
+  run_pca = TRUE, # not running pca, changing clusters in totalvi reduction
+  pca.reduction.name = "pca.sct.test", # instead of pca
+  umap.reduction.name = "umap.pca.test",
+  dims = 1:30,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.6,
+  group.singletons = FALSE
+)
+Idents(seu_singlet) <- "cluster.totalvi"
+DimPlot(seu_singlet, reduction = "umap.totalvi.sct", label = TRUE)
+```
+
+# MultiModal with SCT and TOTALVI (testowo)
+```{r}
+seu_singlet <- FindMultiModalNeighbors(
+  seu_singlet,
+  reduction.list = list("pca.sct.test", "totalvi.sct"),
+  dims.list = list(1:30, 1:20), modality.weight.name = "RNA.weight"
+)
+
+seu_singlet <- RunUMAP(
+  seu_singlet,
+  nn.name = "weighted.nn",
+  reduction.name = "wnn.umap",
+  reduction.key = "wnnUMAP_"
+)
+
+seu_singlet <- FindClusters(
+  seu_singlet,
+  graph.name = "wsnn",
+  algorithm = 4,
+  resolution = 0.3,
+  verbose = FALSE
+)
+
+# Idents(seu_singlet) <- "cluster.totalvi"
+colnames(seu_singlet@meta.data)
+Idents(seu_singlet) <- "wsnn_res.0.3"
+
+DimPlot(
+  seu_singlet,
+  reduction = "wnn.umap",
+  group.by = "MULTI_ID",
+  label = TRUE
+)
+
+viz_quality(
+  seu_singlet,
+  assay = "SCT", c(t_quality),
+  reduction = "umap.pca.test", gr_by_features_totalvi
+)
+```
+
+
+# MultiModal with SCT and ADT DSB threshold
+```{r}
+seu_singlet <- readRDS("17-jan-2025_seu_singlet.rds")
+seu_singlet
+
+# set up dsb values to use in WNN analysis (do not normalize with CLR, use dsb normalized values)
+DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
+
+
+
+features <- get_features(seu_singlet, "ADT.dsb.threshold")
+# cluster with adt data only
+# cluster and run umap
+seu_singlet <- FindNeighbors(
+  seu_singlet,
+  features = features,
+  dims = NULL, assay = "ADT.dsb.threshold",
+  k.param = 30,
+  verbose = FALSE
+)
+
+# direct graph clustering
+seu_singlet <- FindClusters(
+  seu_singlet,
+  resolution = 1,
+  algorithm = 3,
+  graph.name = "ADT.dsb.threshold_snn",
+  verbose = FALSE
+)
+seu_singlet <- RunUMAP(
+  seu_singlet,
+  features = features,
+  assay = "ADT.dsb.threshold"
+)
+seu_singlet
+
+DimPlot(seu_singlet, label = TRUE)
+
+f1 <- features[1:10]
+f2 <- features[11:21]
+
+FeaturePlot(
+  seu_singlet,
+  features = f2
+)
+
+d <- cbind(
+  seu_singlet@meta.data,
+  as.data.frame(t(seu_singlet@assays$ADT.dsb.threshold@data))
+  # s@reductions$umap@cell.embeddings)
+)
+
+adt_plot <- d %>%
+  dplyr::group_by(ADT.dsb.threshold_snn_res.1) %>%
+  dplyr::summarize_at(.vars = features, .funs = median) %>%
+  tibble::remove_rownames() %>%
+  tibble::column_to_rownames("ADT.dsb.threshold_snn_res.1")
+# plot a heatmap of the average dsb normalized values for each cluster
+pheatmap::pheatmap(t(adt_plot),
+  color = viridis::viridis(25, option = "B"),
+  fontsize_row = 8, border_color = NA
+)
+
+
+VariableFeatures(seu_singlet) <- rownames(seu_singlet)
+seu_singlet <- seu_singlet %>%
+  ScaleData() %>%
+  RunPCA(reduction.name = "apca", verbose = FALSE)
+
+
+# run WNN
+seu_singlet <- FindMultiModalNeighbors(
+  seu_singlet,
+  reduction.list = list("pca.sct", "apca"),
+  dims.list = list(1:30, 1:18),
+  modality.weight.name = "RNA.weight",
+  verbose = FALSE
+)
+
+# cluster
+seu_singlet <- FindClusters(seu_singlet,
+  graph.name = "wsnn",
+  algorithm = 4,
+  resolution = 0.4,
+  verbose = FALSE,
+  random.seed = 1990
+)
+
+seu_singlet <- RunUMAP(
+  seu_singlet,
+  nn.name = "weighted.nn",
+  reduction.name = "wnn.umap",
+  reduction.key = "wnnUMAP_"
+)
+
+colnames(seu_singlet@meta.data)
+Idents(seu_singlet) <- "wsnn_res.0.4"
+# Idents(seu_singlet) <- "cluster.totalvi"
+
+DimPlot(
+  seu_singlet,
+  reduction = "wnn.umap",
+  group.by = "MULTI_ID",
+  label = TRUE
+)
+
+DimPlot(
+  seu_singlet,
+  reduction = "umap.totalvi.sct",
+  group.by = "MULTI_ID",
+  label = TRUE
+)
+
+seu_singlet
+FeaturePlot(
+  seu_singlet,
+  reduction = "wnn.umap",
+  features = f2
+)
+
+
+FeatureScatter(
+  seu_singlet,
+  "TotalSeqC-CD45",
+  "TotalSeqC-CD8"
+)
+
+
+
+
+
+
+
+
+viz_quality(
+  seu_singlet,
+  assay = "SCT", c(t_quality),
+  reduction = "wnn.umap", gr_by_features_totalvi
+)
+
 DefaultAssay(seu_singlet) <- "ADT.dsb.threshold"
 features <- get_features(seu_singlet, "ADT.dsb.threshold")
 length(features)
@@ -446,83 +842,413 @@ f_list <- list(f1, f2)
 for (i in seq_along(f_list)) {
   seu_FeaturePlot(
     seu_singlet, "ADT.dsb.threshold",
-    reduction = "umap.totalvi.sct",
+    reduction = "wnn.umap",
     color = inferno,
     features = f_list[[i]],
     max.cutoff = NA,
     show = FALSE,
-    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/09-jan-25_sct_dsb-threshold/panel_", i), # nolint
+    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/04-feb-25_sct_dsb-threshold/panel_", i), # nolint
     ggheight = 20,
     ggwidth = 20
   )
 }
 ```
 
+
+# PRZENOSZE PONIŻSZE DO 02_Create_vizuals.Rmd
+
 # Heatmap of top 5 genes in all clusters
+# zastąpiąne lepszym pojeściem!
+# ```{r}
+# top_genes <- Seurat::FindAllMarkers(
+#   seu_singlet_myelo,
+#   test_use = "MAST", only.pos = TRUE
+# ) |>
+#   group_by(cluster) |>
+#   top_n(n = 5, wt = avg_log2FC)
+
+# DoHeatmap(seu_singlet_myelo, features = unique(top_genes$gene)) +
+#   scale_fill_viridis_c()
+# ```
+
+## Transfer labels from GBM-citeseq
+
+## Transfer labels from XXX
+
+## Find Marker genes
+# też trzeba zastąpić lepszym podejściem? Nie wiem teraz.
+```{r}
+DefaultAssay(seu_singlet_myelo) <- "SCT"
+markers <- FindMarkers(
+  seu_singlet_myelo,
+  ident.1 = "8",
+  # ident.2 = "5",
+  test_use = "MAST",
+  min.pct = 0.25,
+  # min.diff.pct = 0.5 # main heatmap
+  min.diff.pct = 0.1
+) |>
+  arrange(desc(avg_log2FC))
+
+dim(markers)
+markers[1:20, ]
+rownames(markers[1:20, ])
+
+"VIM" %in% rownames(markers)
+
+seu_singlet_myelo <- ScaleData(
+  seu_singlet_myelo,
+  features = as.character(unique(rownames(markers)), assay = "SCT")
+)
+
+DoHeatmap(seu_singlet_myelo, features = rownames(markers), slot = "scale.data") + scale_fill_viridis_c()
+```
+
+# make volcanos
+```{r}
+library(ggrepel)
+
+markers$highlight <- ifelse(
+  rownames(markers) %in% rownames(markers[1:20, ]), rownames(markers), NA
+)
+markers$color <- ifelse(
+  rownames(markers) %in% rownames(markers[1:20, ]), "yes", "no"
+)
+
+head(markers)
+
+
+ggplot(markers, aes(x = avg_log2FC, y = -log10(p_val_adj), color = color)) +
+  geom_point(alpha = 0.8) +
+  scale_color_manual(values = c("gray", "red")) +
+  labs(title = "Volcano Plot", x = "Log2 Fold Change", y = "-Log10 Adjusted P-value") +
+  theme_minimal() +
+  theme(
+    legend.title = element_blank(),
+    axis.text = element_text(size = 14)
+  ) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "blue") + # p-value threshold
+  # geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed", color = "blue") + # logFC threshold
+  geom_text_repel(aes(label = highlight), na.rm = TRUE, size = 4) # Label specific genes
+```
+
 ```{r}
 DefaultAssay(seu_singlet) <- "SCT"
-Idents(seu_singlet) <- "cluster.totalvi"
+seu_singlet
+FeaturePlot(
+  seu_singlet_myelo,
+  reduction = "umap.myelo.pca.sct",
+  # features = c("FCN1", "VCAN") # clas. monocytes
+  # features = c("C1QA"), # tams
 
-top_genes <- Seurat::FindAllMarkers(
-  seu_singlet,
-  test_use = "MAST", only.pos = TRUE
-) |>
-  group_by(cluster) |>
-  top_n(n = 5, wt = avg_log2FC)
+  # features = c("EREG", "MT2A", "MT1G"),
+  # features = c("HK2", "ENO2", "SLC3A1"),
+  # features = c("CD44", "VCAN", "GPNMB")
+  # features = c("CD14", "MARCO", "CD163")
+  # features = c("CCL2", "CXCL8")
+  # features = c("STAT3", "NFKB1")
+  # features = c("ANPEP", "CD33")
+  # features <- c("CCR7", "CD45RA", "CD209", "CLEC4C", "LILRB4", "NRP1", "B220", "SiglecH", "IFN-α")
+  # features  = c("S100A8", "S100A9")
+  # features  = c("KLF4", "AXL", "CLEC10A", "SCT")
+  # features  = c("TGFBI", "P2RY12")
+  features  = c("HMOX1")
+  # features = "CXCR4"
+  # features = c("C1QA", "IGF1") # mature macrophage
+  # features = c("C1QA", "STMN1", "MKI67") # prolif. tams
+  # features = c("C1QA", "TGFBI", "CLEC12A", "FXYD5") # mo-TAM
+  # features = c("C1QA", "SALL1", "TMEM119", "P2RY12")
+  # features = c("C1QA", "TMIGD3", "APOC2", "SCIN")
+  # features = c("C1QA", "IGF1", "EREG", "S100A6", "LYZ") # monocytes/Mo-TAM
+  # features = c("C1QA", "GPNMB", "LGALS3", "FABP5") # phagocytosis/lipid metab.
+  # features = c("C1QA", "BNIP3", "ADAM8", "MIF", "SLC2A1")
+  # features = c("P2RY12") # high in microglia, but not here
+  # features = c("HLA-A", "HLA-B")
+  # features = c("TREM2", "APOE", "P2RY12", "TMEM119")
+  # features = "CD14",
+  # features = c("PLAC8", "CST7", "SH3BP4", "LGALS2")
+  # features = c("CXCR1", "TMEM119", "P2YR12")
+  # features = mg_tam
+  # features = c("ID1", "ID2", "ID3", "ETS2")
+  # features = c("MRC1", "Ly6C")
+  # features = "CXCL12"
+  # features = c("CXCR4", "CXCR7")
+  # features = c("FCN1", "CD14") # cd16 mono
+  # features = c("GZMB", "IL3RA", "COBLL1", "TCF4") # pDC
+) + patchwork::plot_annotation("")
 
-DoHeatmap(seu_singlet, features = unique(top_genes$gene)) +
+mc_b <- c("HEXB", "TMEM119", "P2RY12")
+microglia_ps <- c("CX3CR1", "C1QA", "FCGR1A", "OLFML3", "GPR34")
+macrophage_ps <- c("CD14", "ITGA4", "CCR2", "IFITM2")
+hypoxia_ps <- c("PLIN3", "TIMP1", "VIM", "BNIP3")
+```
+
+```{r}
+stress <- c("HSP90", "JUN", "FOS")
+microglia <- c("TMEM119", "P2RY12", "CX3CR1", "P2RY13", "SELPLG", "CSF1R", "TREM2", "CCR5", "MARCKS", "CCR2")
+mg_tam <- c("P2RY12", "CX3CR1", "FCGR1A", "CH25H", "CCL4L2")
+mo_tam <- c("TGFBI", "CD14", "CD163", "SELENOP", "GPNMB")
+mo <- c("FCN1", "VCAN", "CD52", "S100A8", "S100A9")
+ifn_tam <- c("IFIT1", "IFI44L", "IFIT3", "IFI6", "IFI44", "FGL2", "HERC5", "IFIT2", "ISG15", "CXCL10", "MX1", "MX2")
+prolif_tam <- c("MKI67", "STMN1", "TYMS", "TOP2A", "TUBB")
+lipid_tam <- c("APOC1", "APOE", "CD63", "LGALS3", "ACP5", "GCHFR", "OTOA", "PLA2G7", "SDS")
+hypoxic_tam <- c("ENO1", "SCD", "PLP2", "RAB42", "S100A10", "S100A6", "HK2", "SLC2A1", "CXCL8", "LGALS1", "TIMP1", "PLIN2", "CTSL", "LDHA", "NDRG1", "HILPDA", "ERO1A", "NUPR1", "MT2A")
+chemotaxis_tam <- c("SPP1", "RGS16", "FSCN1", "HAMP", "BIN1", "IBSP")
+
+# chat
+hypoxia_markers <- c(
+  "GLUT1", "HK2", "LDHA", "PFKFB3", "VEGFA", "ANGPTL4",
+  "ADM", "BNIP3", "EGLN1", "CA9", "NDRG1", "CD274", "TGF-β1",
+  "S100A8", "S100A9", "MMP2", "MMP9", "LOX", "TIMP1", "SOD2",
+  "PRDX1", "PRDX2", "HMOX1", "ARG1", "NOS2", "MRC1", "HIF1A",
+  "HIF2A", "PGK1", "ENO1", "CXCR4"
+)
+pDC_genes <- c("CLEC4C", "LILRA4", "IRF7", "TCF4", "NRP1", "IL3RA", "FCER1A")
+moDC_genes <- c("FCN1", "S100A8", "S100A9", "CD14", "CD1C", "CCR2", "FCGR3A")
+cDC2_genes <- c("CD1C", "CLEC10A", "IRF4", "CD209", "FCER1A")
+cDC1_genes <- c("CLEC9A", "XCR1", "IRF8", "BATF3", "IDO1", "FLT3")
+langerhans_genes <- c("CD207", "EPCAM", "HLA-DQ")
+
+
+MCG <- c("HOMER1", "CCL2", "NR4A3", "P2RY12", "CX3CR1", "VSIG4", "SPP1", "TREM2")
+
+
+# tumor
+outer_radial_glia <- c("HOPX", "PTPRZ1", "TNC", "FAM107A")
+```
+
+```{r}
+features <- hypoxia_ps
+features <- c("S100A9", "VCAN", "LYZ") # monocyte precursor
+features <- c("FCGR3A", "C1QA", "CX3CR1") # non-classical monocytes
+
+
+# features = c("FCN1", "VCAN"),
+# features = c("HLA-DPB1", "HLA-DQA1", "HLA-DRA", "HLA-DPA1"),
+# features = c("CCL3L3", "CCL4L2", "CCL3", "CCL4", "CCL2")
+# features_2 = c("EGR1", "EGR2")
+# features <- c("PLIN2", "TIMP1", "VIM", "BNIP3")
+# features <- c("IRF4", "IRF7", "IRF8") # pDC TFs
+# features <- c("IRF4", "KLF4", "ZBTB46") # moDC TFs
+features <- c("CCR7", "CD45RA", "CD209", "CLEC4C", "LILRB4", "NRP1", "B220", "SiglecH", "IFNA")
+
+
+seu_singlet_myelo <- AddModuleScore(
+  seu_singlet_myelo,
+  features = features,
+  pool = NULL,
+  nbin = 24,
+  ctrl = 100,
+  k = FALSE,
+  assay = NULL,
+  name = "Cluster",
+  seed = 1,
+  search = FALSE,
+  slot = "data",
+)
+
+FeaturePlot(
+  seu_singlet_myelo,
+  features = "Cluster1",
+  reduction = "umap.myelo.pca.sct",
+  label = TRUE
+) & mycolor2
+
+VlnPlot(
+  seu_singlet_myelo,
+  features = features,
+  assay = "SCT"
+)
+
+DoHeatmap(seu_singlet_myelo, features = features, slot = "scale.data") +
   scale_fill_viridis_c()
 ```
 
+```{r}
+top_genes <- Seurat::FindAllMarkers(
+  seu_singlet_myelo,
+  test_use = "MAST", only.pos = TRUE
+) |>
+  group_by(cluster) |>
+  top_n(n = 10, wt = avg_log2FC)
+
+DoHeatmap(seu_singlet_myelo, features = top_genes$gene, slot = "scale.data") +
+  scale_fill_viridis_c()
+```
 ?DoHeatmap
 
+```{r}
+DefaultAssay(seu_singlet_myelo) <- "ADT.dsb.threshold"
+FeaturePlot(
+  seu_singlet_myelo,
+  reduction = "umap.myelo.pca.sct",
+  label = TRUE,
+  features = "TotalSeqC-CD11b"
+)
+```
+
+# Vizualize ADT features in isolated myeloid clusters
+```{r}
+DefaultAssay(seu_singlet_myelo) <- "ADT.dsb.threshold"
+features <- get_features(seu_singlet_myelo, "ADT.dsb.threshold")
+length(features)
+f1 <- features[1:10]
+f2 <- features[11:21]
+f_list <- list(f1, f2)
+
+for (i in seq_along(f_list)) {
+  seu_FeaturePlot(
+    seu_singlet_myelo, "ADT.dsb.threshold",
+    reduction = "umap.myelo.pca.sct",
+    color = inferno,
+    features = f_list[[i]],
+    max.cutoff = NA,
+    show = FALSE,
+    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/21-Jan-25_sct_dsb-threshold_myeloidOnly/panel_", i), # nolint
+    ggheight = 20,
+    ggwidth = 20
+  )
+}
+```
 
 
 
+# Inne podejście :DDD (lepsza heatmapa ogólna)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#  heatmapy subsetów (lepsze podejście, FindAllMarkers nie FindMarkers)
+```{r}
+# subset_object <- subset(seu_singlet_myelo, idents = c("5", "8"))
+```
 
 ```{r}
-cluster_markers <- FindMarkers(
-  seu_singlet,
-  test_use = "MAST",
-  ident.1 = 1,
-  min.pct = 0.25
-)
-
-cluster_markers_tb <- as_tibble(cluster_markers, rownames = "gene") |>
-  select(gene, avg_log2FC) |>
-  remove_rownames() |>
-  column_to_rownames("gene")
-
-
-pheatmap::pheatmap(t(cluster_markers_tb[1:20, ]),
-  cluster_rows = FALSE, cluster_cols = FALSE,
-  scale = "row",
-  color = viridis::viridis(25, option = "B"),
-  border_color = NA
-)
-
-
-cluster_markers_tb[1:20, ]
-
-rownames(cluster_markers[1:20, ])
-cluster_markers[1:20, 2]
-cluster_markers[1:20, ]
+# table(subset_object@active.ident)
 ```
+
+```{r}
+# Compute differentiall expression
+markers_genes <- FindMarkers(
+  seu_singlet_myelo,
+  ident.1 = "5",
+  ident.2 = "8",
+  log2FC.threshold = 0.2,
+  test.use = "MAST",
+  min.pct = 0.1,
+  min.diff.pct = 0.2,
+  only.pos = TRUE,
+  max.cells.per.ident = 50,
+  assay = "SCT"
+)
+```
+
+```{r}
+top15 <- markers_genes %>%
+  # group_by(cluster) %>%
+  top_n(-15, p_val_adj)
+head(top15)
+```
+
+```{r}
+# create a scale.data slot for the selected genes
+subset_object <- ScaleData(
+  seu_singlet_myelo,
+  features = as.character(unique(top15$gene)), assay = "SCT"
+)
+
+subset_object <- subset(seu_singlet_myelo, idents = c("5", "8"))
+
+DoHeatmap(
+  subset_object,
+  features = as.character(unique(rownames(top15))),
+  assay = "SCT"
+)
+```
+
+```{r}
+DotPlot(
+  seu_singlet_myelo,
+  features = rev(as.character(unique(top5$gene))), group.by = "cluster.sct.myelo", assay = "SCT"
+) + coord_flip()
+```
+
+```{r}
+head(markers_genes)
+
+top15_cluster <- top15 |>
+  filter(cluster == 8)
+
+top15_cluster$gene
+```
+
+## GSVA
+
+
+
+# create PCA to infer microgllia/macrophages 
+```{r}
+Idents(seu_singlet_myelo) <- "cluster.sct.myelo"
+seu_singlet_macmg <- subset(seu_singlet_myelo, idents = c(1, 2, 3, 4))
+
+seu_singlet_macmg <- NormalizeData(seu_singlet_macmg)
+seu_singlet_macmg <- ScaleData(seu_singlet_macmg)
+seu_singlet_macmg <- RunPCA(seu_singlet_macmg)
+
+# Get PCA feature loadings
+pca_loadings <- seu_singlet_macmg[["pca"]]@feature.loadings
+
+# Get positive loadings (top genes contributing positively)
+top_pos_genes <- sort(pca_loadings[, 4], decreasing = TRUE)[1:50]
+print(names(top_pos_genes))
+
+# Get negative loadings (top genes contributing negatively)
+top_neg_genes <- sort(pca_loadings[, 4], decreasing = FALSE)[1:50]
+print(names(top_neg_genes))
+
+top_pos_neg <- list(
+  "positive" = names(top_pos_genes),
+  "negative" = names(top_neg_genes)
+)
+
+auc_scores <- AUCell_calcAUC(
+  top_pos_neg,
+  gene_rankings
+)
+gene_rankings <- AUCell_buildRankings(expr_matrix, plotStats = FALSE)
+
+auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
+seu_singlet_myelo <- AddMetaData(seu_singlet_myelo, metadata = auc_matrix)
+
+VlnPlot(
+  seu_singlet_myelo,
+  features = c(
+    "positive",
+    "negative"
+  )
+)
+
+FeaturePlot(
+  seu_singlet_myelo,
+  features = c(
+    "positive",
+    "negative"
+  ),
+  reduction = "umap.myelo.pca.sct"
+) & mycolor2
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

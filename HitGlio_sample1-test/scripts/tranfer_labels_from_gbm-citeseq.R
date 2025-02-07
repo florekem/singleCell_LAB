@@ -10,7 +10,7 @@ print(sample_path)
 seu_singlet <- readRDS("RDS/seu_singlet_clustered_totalvi-28nov2024.rds")
 
 # 2. Create seurat object ---------------------------------------
-seu_matrix <- Read10X(file.path(sample_path, filtered_feature_bc_matrix))
+seu_matrix <- Read10X(file.path(sample_path, "filtered_feature_bc_matrix"))
 
 seu_test <- CreateSeuratObject(
   counts = seu_matrix$`Gene Expression`,
@@ -80,31 +80,45 @@ DimPlot(
 seu_singlet_myelo <- subset(seu_singlet, idents = c(1, 11, 10, 18, 15, 20, 24, 29, 28, 9, 16, 27, 12))
 
 ### lets try without integration
-seu_singlet_myelo <- NormalizeData(seu_singlet_myelo)
-seu_singlet_myelo <- FindVariableFeatures(seu_singlet_myelo)
-seu_singlet_myelo <- ScaleData(seu_singlet_myelo)
-seu_singlet_myelo <- RunPCA(seu_singlet_myelo)
-ElbowPlot(seu_singlet_myelo, ndims = 50)
+seu <- seu_normalize_var_scale_pca(
+  seu,
+  normalize = "sct",
+  cluster.name = "seu.cluster.sct.myelo",
+  run_pca = TRUE,
+  pca.reduction.name = "seu.pca.myelo.sct",
+  umap.reduction.name = "seu.umap.myelo.pca.sct",
+  dims = 1:30,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.8,
+  group.singletons = FALSE
+)
 
-seu_singlet_myelo <- FindNeighbors(
-  seu_singlet_myelo,
-  reduction = "pca", dims = 1:30
-)
-seu_singlet_myelo <- FindClusters(
-  seu_singlet_myelo,
-  resolution = 0.5, verbose = FALSE,
-  algorithm = 4
-)
-seu_singlet_myelo <- RunUMAP(
-  seu_singlet_myelo,
-  reduction = "pca", dims = 1:30
-)
-DimPlot(
-  seu_singlet_myelo,
-  group.by = "seurat_clusters", reduction = "umap",
-  label = TRUE
-)
-colnames(seu_singlet_myelo@meta.data)
+# seu_singlet_myelo <- NormalizeData(seu_singlet_myelo)
+# seu_singlet_myelo <- FindVariableFeatures(seu_singlet_myelo)
+# seu_singlet_myelo <- ScaleData(seu_singlet_myelo)
+# seu_singlet_myelo <- RunPCA(seu_singlet_myelo)
+ElbowPlot(seu, ndims = 50, reduction = "pca.myelo.sct")
+
+# seu_singlet_myelo <- FindNeighbors(
+#   seu_singlet_myelo,
+#   reduction = "pca", dims = 1:15
+# )
+# seu_singlet_myelo <- FindClusters(
+#   seu_singlet_myelo,
+#   resolution = 0.5, verbose = FALSE,
+#   algorithm = 4
+# )
+# seu_singlet_myelo <- RunUMAP(
+#   seu_singlet_myelo,
+#   reduction = "pca", dims = 1:30
+# )
+# DimPlot(
+#   seu_singlet_myelo,
+#   group.by = "seurat_clusters", reduction = "umap",
+#   label = TRUE
+# )
+# colnames(seu_singlet_myelo@meta.data)
 
 anchors <- FindTransferAnchors(
   reference = seu,
@@ -119,16 +133,16 @@ query <- TransferData(
 seu_singlet_myelo$predicted.id <- query$predicted.id
 seu_singlet_myelo$prediction.score <- query$prediction.score.max
 seu_singlet_myelo$filtered_prediction <- ifelse(
-  seu_singlet_myelo$prediction.score > 0.8,
+  seu_singlet_myelo$prediction.score > 0.7,
   seu_singlet_myelo$predicted.id, "Uncertain"
 )
 
 DimPlot(
   seu_singlet_myelo,
   group.by = c("seurat_clusters", "filtered_prediction"),
-  label = TRUE, repel = TRUE,
+  label = TRUE, repel = TRUE
   # cols = c("Hypoxic Mo-TAM" = "red")
-  cols = c("Classical monocytes" = "red")
+  # cols = c("Classical monocytes" = "red")
 )
 
 ### tu chciałbym spórbować przenieść powyższe (na samych mylo)
@@ -253,31 +267,43 @@ seu_singlet_myelo$data_name <- "sample1"
 head(seu@meta.data)
 
 # 4. Merge both datasets --------------------------
-DefaultAssay(seu) <- "RNA"
-DefaultAssay(seu_singlet_myelo) <- "RNA"
+DefaultAssay(seu) <- "SCT"
+DefaultAssay(seu_singlet_myelo) <- "SCT"
 
 merged <- merge(seu_singlet_myelo, seu)
 merged
-merged <- NormalizeData(merged)
-merged <- FindVariableFeatures(merged)
-merged <- ScaleData(merged)
-merged <- RunPCA(merged)
+
+merged <- seu_normalize_var_scale_pca(
+  merged,
+  normalize = "sct",
+  cluster.name = "merged.cluster.sct",
+  run_pca = TRUE,
+  pca.reduction.name = "merged.pca.sct",
+  umap.reduction.name = "merged.umap.pca.sct",
+  dims = 1:30,
+  k.param = 30,
+  algorithm = 4,
+  resolution = 0.8,
+  group.singletons = FALSE
+)
+
 
 # 5. Integrate ----------------------
 integrated <- IntegrateLayers(
   merged,
   # method = CCAIntegration,
   method = HarmonyIntegration,
-  orig.reduction = "pca",
-  assay = "RNA",
-  new.reduction = "integrated.cca"
+  orig.reduction = "merged.pca.sct",
+  assay = "SCT",
+  normalization.method = "SCT",
+  new.reduction = "integrated.harmony"
 )
 ?IntegrateLayers
 
 ## 5.1 Inspect intergration ------------------
 integrated <- FindNeighbors(
   integrated,
-  reduction = "integrated.cca",
+  reduction = "integrated.harmony",
   dims = 1:10
 )
 integrated <- FindClusters(
@@ -287,22 +313,30 @@ integrated <- FindClusters(
 )
 integrated <- RunUMAP(
   integrated,
-  reduction = "integrated.cca", dims = 1:10,
+  reduction = "integrated.harmony", dims = 1:10,
   reduction.name = "umap.integrated"
 )
+
 colnames(integrated@meta.data)
 DimPlot(
   integrated,
-  group.by = c("data_name"),
+  group.by = c("cluster.sct.myelo", "cluster"),
   reduction = "umap.integrated",
+  cols = c("mg-TAM" = "red", "1" = "red"),
   label = TRUE
 )
+
+
+
+
 # 6. Transfer labels -------------------
+integrated
+?FindTransferAnchors
 transf.anchors <- FindTransferAnchors(
   reference = integrated,
   query = seu_singlet_myelo,
   dims = 1:5,
-  reference.reduction = "pca"
+  reference.reduction = "pca.sct"
 )
 colnames(integrated@meta.data)
 
@@ -444,12 +478,45 @@ DimPlot(
 
 
 # baza
-seu_singlet_myelo
-DefaultAssay(seu_singlet_myelo) <- "RNA"
+Idents(seu_singlet)
+# seu_singlet_myelo <- subset(seu_singlet, idents = c(1, 11, 10, 18, 15, 20, 24, 29, 28, 9, 16, 27, 12))
+
+seu_singlet_myelo <- subset(
+  seu_singlet,
+  idents = c(1, 18, 11, 10, 15)
+)
+
+# seu_singlet_myelo <- NormalizeData(seu_singlet_myelo)
+# seu_singlet_myelo <- FindVariableFeatures(seu_singlet_myelo)
+# seu_singlet_myelo <- ScaleData(seu_singlet_myelo)
+# ElbowPlot(seu_singlet_myelo, ndims = 50)
+
+# seu_singlet_myelo <- FindNeighbors(
+#   seu_singlet_myelo,
+#   reduction = "pca", dims = 1:10
+# )
+# seu_singlet_myelo <- FindClusters(
+#   seu_singlet_myelo,
+#   resolution = 0.4, verbose = FALSE,
+#   algorithm = 4
+# )
+# seu_singlet_myelo <- RunUMAP(
+#   seu_singlet_myelo,
+#   reduction = "pca", dims = 1:10
+# )
+# DimPlot(
+#   seu_singlet_myelo,
+#   group.by = "seurat_clusters", reduction = "umap",
+#   label = TRUE
+# )
+
+Idents(seu_singlet_myelo) <- "cluster.totalvi"
+DefaultAssay(seu_singlet_myelo) <- "SCT"
 
 top_genes <- Seurat::FindAllMarkers(
   seu_singlet_myelo,
-  test_use = "MAST", only.pos = TRUE
+  test_use = "MAST",
+  only.pos = TRUE
 ) |>
   group_by(cluster) |>
   top_n(n = 5, wt = avg_log2FC)
@@ -461,7 +528,7 @@ DoHeatmap(seu_singlet_myelo, features = unique(top_genes$gene)) +
 Idents(seu_singlet_myelo) <- "cluster.totalvi"
 markers <- FindMarkers(
   seu_singlet_myelo,
-  ident.1 = "10",
+  ident.1 = "18",
   test_use = "MAST",
   min.pct = 0.25
 ) |>
@@ -472,10 +539,10 @@ markers <- FindMarkers(
 
 dim(markers)
 markers[1:50, ]
+rownames(markers[1:50, ])
 
-"EREG" %in% rownames(markers)
-"IFITM2" %in% rownames(markers)
-microglia <- c("TMEM119", "P2RY12", "CX3CR1", "P2RY13", "SELPLG", "CSF1R", "TREM2", "CCR5", "MARCKS")
+
+
 test_this <- microglia
 test_this %in% rownames(markers)
 markers[test_this, ]
@@ -488,12 +555,38 @@ FeaturePlot(
 
 "P2YR12" %in% markers
 
+dittoDotPlot(
+  seu_singlet,
+  vars = rownames(markers[1:50, ]), group.by = "cluster.totalvi"
+)
 
 DimPlot(
   seu_singlet_myelo,
   group.by = "cluster.totalvi", reduction = "umap.totalvi.sct",
   label = TRUE
 )
+
+
+top_genes <- Seurat::FindAllMarkers(
+  seu_singlet_myelo,
+  test_use = "MAST", only.pos = TRUE
+) |>
+  group_by(cluster) |>
+  top_n(n = 10, wt = avg_log2FC)
+
+DoHeatmap(seu_singlet_myelo, features = unique(top_genes$gene)) +
+  scale_fill_viridis_c()
+
+
+DoHeatmap(seu_singlet_myelo, features = rownames(markers[1:50, ])) +
+  scale_fill_viridis_c()
+
+
+
+
+
+
+
 
 
 markers <- FindMarkers(
@@ -510,3 +603,145 @@ markers <- FindMarkers(
 dim(markers)
 markers[1:50, ]
 rownames(markers)
+
+
+
+# GSVA
+library(GSVA)
+library(msigdbr)
+
+gene_sets <- msigdbr(species = "Homo sapiens", category = "H")
+gene_set_list <- split(gene_sets$gene_symbol, gene_sets$gs_name) # wooolooloo
+
+expr_matrix <- as.matrix(
+  GetAssayData(
+    seurat_subset,
+    layer = "data", assay = "RNA"
+  )
+)
+
+params <- zscoreParam(
+  expr_matrix,
+  gene_set_list,
+  minSize = 10,
+  maxSize = 500
+)
+params
+
+gsva_es <- gsva(
+  params,
+  verbose = TRUE
+)
+
+gsva_Cx <- "GSVA_H"
+
+seu_singlet_myelo[[gsva_Cx]] <- CreateAssayObject(data = gsva_es)
+seurat_subset[[gsva_Cx]] <- CreateAssayObject(data = gsva_es)
+
+DefaultAssay(seu_singlet_myelo) <- gsva_Cx
+DefaultAssay(seurat_subset) <- gsva_Cx
+
+seu_singlet <- readRDS("17-jan-2025_seu_singlet.rds")
+
+colnames(seu_singlet@meta.data)
+
+# FeaturePlot(seu_singlet, assay = "GSVA", reduction = "umap.totalvi.sct")
+
+avg_pathway_scores <- AverageExpression(seu_singlet_myelo, assays = gsva_Cx)$GSVA
+avg_pathway_scores <- AverageExpression(seurat_subset, assays = gsva_Cx)$GSVA
+colnames(avg_pathway_scores)
+rownames(avg_pathway_scores)
+
+markers <- Seurat::FindAllMarkers(
+  # seu_singlet_myelo,
+  seurat_subset,
+  assay = gsva_Cx,
+  test_use = "MAST",
+  only.pos = TRUE
+) |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  top_n(n = 20, wt = avg_log2FC) |>
+  print(markers[1:50, ], n = 50)
+
+markers_sort <- markers |>
+  filter(cluster == "3") |>
+  arrange(desc(avg_log2FC))
+# select(gene)
+
+ggplot(markers, aes(x = gene, y = cluster, size = avg_log2FC, color = p_val_adj)) +
+  geom_point(aes(fill = p_val_adj < 0.05)) +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_color_gradient(low = "black", high = "lightgray") +
+  coord_flip() +
+  labs() +
+  theme_minimal() +
+  theme(
+    axis.text = element_text(size = 14),
+    panel.grid.major = element_line(size = 0.5, color = "grey80")
+  )
+
+
+
+
+
+# GSE278456_MyeloidSeurat.RDS
+gse <- readRDS("/mnt/sda4/GSE278456_MyeloidSeurat.RDS")
+
+gse$cluster_annotation <- gse@active.ident
+
+DefaultAssay(gse) <- "integrated"
+
+gse <- seu_normalize_var_scale_pca(
+  gse,
+  normalize = "log",
+  cluster.name = "cluster.log.myelo",
+  run_pca = TRUE,
+  pca.reduction.name = "pca.myelo.log",
+  umap.reduction.name = "umap.myelo.pca.log",
+  dims = 1:30,
+  k.param = 30,
+  algorithm = 1,
+  resolution = 1.0,
+  group.singletons = FALSE
+)
+
+seu_singlet_myelo <- seu_normalize_var_scale_pca(
+  seu_singlet_myelo,
+  normalize = "log",
+  cluster.name = "cluster.log.myelo",
+  run_pca = TRUE,
+  pca.reduction.name = "pca.myelo.log",
+  umap.reduction.name = "umap.myelo.pca.log",
+  dims = 1:30,
+  k.param = 30,
+  algorithm = 1,
+  resolution = 1.0,
+  group.singletons = FALSE
+)
+
+# without integration
+anchors <- FindTransferAnchors(
+  reference = gse,
+  query = seu_singlet_myelo, dims = 1:30
+)
+
+query <- TransferData(
+  anchorset = anchors,
+  refdata = gse$cluster_annotation, dims = 1:30
+)
+
+seu_singlet_myelo$predicted.id <- query$predicted.id
+seu_singlet_myelo$prediction.score <- query$prediction.score.max
+seu_singlet_myelo$filtered_prediction <- ifelse(
+  seu_singlet_myelo$prediction.score > 0.7,
+  seu_singlet_myelo$predicted.id, "Uncertain"
+)
+
+DimPlot(
+  seu_singlet_myelo,
+  group.by = c("seurat_clusters", "filtered_prediction"),
+  label = TRUE, repel = TRUE
+  # cols = c("Hypoxic Mo-TAM" = "red")
+  # cols = c("Classical monocytes" = "red")
+)
