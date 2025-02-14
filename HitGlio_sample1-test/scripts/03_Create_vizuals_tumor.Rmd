@@ -43,7 +43,7 @@ Idents(seu_singlet_azi) <- "predicted.class"
 
 seu_DimPlot(
   seu_singlet_azi,
-  reduction = "umap.tumor.pca.sct",
+  reduction = "umap.tumor.pca.log",
   group.by = c("predicted.subclass"),
   show = TRUE,
   ggheight = NA,
@@ -55,31 +55,6 @@ seu_DimPlot(
 Make lognorm for RNA assay. Subset 100 cells.
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 DefaultAssay(seu_singlet_tumor) <- "RNA"
-
-seu_singlet_tumor <- seu_normalize_var_scale_pca(
-  seu_singlet_tumor,
-  normalize = "log",
-  cluster.name = "cluster.log.tumor",
-  run_pca = TRUE,
-  pca.reduction.name = "pca.tumor.log",
-  umap.reduction.name = "umap.tumor.pca.log",
-  dims = 1:20,
-  k.param = 30,
-  algorithm = 4,
-  resolution = 0.3,
-  group.singletons = FALSE
-)
-# keep sct idents on; log is only for DE calculations
-Idents(seu_singlet_tumor) <- "cluster.sct.tumor"
-
-p1 <- DimPlot(seu_singlet_tumor, reduction = "umap.totalvi.sct", label = TRUE)
-
-# for the reference, this is how log clustering looks like
-p2 <- DimPlot(seu_singlet_tumor, reduction = "umap.tumor.pca.log", label = TRUE)
-
-p3 <- DimPlot(seu_singlet_tumor, reduction = "umap.tumor.pca.sct", label = TRUE)
-
-p1 | p2 / p3
 ```
 
 ## subset even number of cells
@@ -94,7 +69,7 @@ subset_cells <- list()
 # Loop through each cluster and sample cells
 for (cluster in unique(cluster_ids)) {
   cells_in_cluster <- WhichCells(seu_singlet_tumor, idents = cluster)
-  sampled_cells <- sample(cells_in_cluster, size = 60)
+  sampled_cells <- sample(cells_in_cluster, size = 40)
   # size = min(100, length(cells_in_cluster)) # if no of cell smaller than specified, select max cells in cluster # nolint
   subset_cells[[cluster]] <- sampled_cells
 }
@@ -128,14 +103,18 @@ markers_genes <- FindAllMarkers(
 
 ## draw barlopts with top25
 ```{r}
+top25 <- markers_genes %>%
+  group_by(cluster) %>%
+  top_n(-25, p_val_adj)
+```
+
+```{r}
 for (i in unique(top25$cluster)) {
   # print genes protted on barplots (top25 genes in each cluster)
-  top25 |>
-    group_by(cluster) |>
-    filter(cluster == i) |>
-    select(gene) |>
-    as.vector() |>
-    print()
+  omg <- top25 |>
+    filter(cluster == i)
+  print(omg$gene)
+
 
   barplot(
     sort(setNames(top25$avg_log2FC, top25$gene)[top25$cluster == i], FALSE),
@@ -149,7 +128,7 @@ for (i in unique(top25$cluster)) {
 }
 ```
 
-## make heatmap with top 10 genes
+## make heatmap with top genes
 ```{r, fig.width=10, fig.height=12}
 top_x <- markers_genes %>%
   group_by(cluster) %>%
@@ -165,7 +144,7 @@ seurat_subset_heatmap <- ScaleData(
 DoHeatmap(
   seurat_subset_heatmap,
   features = as.character(unique(top_x$gene)),
-  group.by = "cluster.sct.tumor", assay = "RNA"
+  group.by = "cluster.log.tumor", assay = "RNA"
 )
 ```
 
@@ -194,6 +173,119 @@ for (i in unique(top_x$cluster)) {
   ))
 }
 ```
+
+# Generate scores of marker gene sets using AUCell
+## Run AUCEll
+```{r, echo = FALSE, warning=FALSE}
+expr_matrix <- as.matrix(
+  GetAssayData(seu_singlet_tumor, layer = "data", assay = "RNA")
+)
+
+gene_rankings <- AUCell_buildRankings(expr_matrix, plotStats = FALSE)
+```
+
+### Liu2022 pHGG metapropgrams
+```{r}
+print(liu2022)
+
+auc_scores <- AUCell_calcAUC(
+  liu2022,
+  gene_rankings
+)
+
+auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
+seu_singlet_tumor <- AddMetaData(seu_singlet_tumor, metadata = auc_matrix)
+
+images <- map(
+  names(liu2022),
+  ~ FeaturePlot(
+    seu_singlet_tumor,
+    features = .x,
+    pt.size = 1,
+    label = TRUE,
+    reduction = "umap.tumor.pca.log"
+  ) & mycolor2 & NoAxes()
+)
+
+stacked_images <- patchwork::wrap_plots(images, ncol = 3)
+plot1 <- stacked_images + patchwork::plot_annotation(
+  title = "AUCell scores of Liu2022 The Landscape of Tumor Cell States and Spatial Organization in H3-K27M Mutant Diffuse Midline Glioma",
+  theme = theme(plot.title = element_text(size = 25))
+)
+print(plot1)
+```
+
+### Hara2021 pHGG metapropgrams
+```{r}
+print(hara2021)
+
+auc_scores <- AUCell_calcAUC(
+  hara2021,
+  gene_rankings
+)
+
+auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
+seu_singlet_tumor <- AddMetaData(seu_singlet_tumor, metadata = auc_matrix)
+
+images <- map(
+  names(hara2021),
+  ~ FeaturePlot(
+    seu_singlet_tumor,
+    features = .x,
+    pt.size = 1,
+    label = TRUE,
+    reduction = "umap.tumor.pca.log"
+  ) & mycolor2 & NoAxes()
+)
+
+stacked_images <- patchwork::wrap_plots(images, ncol = 3)
+plot1 <- stacked_images + patchwork::plot_annotation(
+  title = "AUCell scores of Hara2021 Interactions between cancer cells and immune cells drive transitions",
+  theme = theme(plot.title = element_text(size = 25))
+)
+print(plot1)
+```
+
+### Nefter2019 metapropgrams
+```{r}
+neftel2019 <- read_csv("/mnt/sda4/marker_genes/neftel2019.csv")
+
+print(neftel2019)
+
+auc_scores <- AUCell_calcAUC(
+  neftel2019,
+  gene_rankings
+)
+
+auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
+seu_singlet_tumor <- AddMetaData(seu_singlet_tumor, metadata = auc_matrix)
+
+images <- map(
+  names(neftel2019),
+  ~ FeaturePlot(
+    seu_singlet_tumor,
+    features = .x,
+    pt.size = 1,
+    label = TRUE,
+    reduction = "umap.tumor.pca.log"
+  ) & mycolor2 & NoAxes()
+)
+
+stacked_images <- patchwork::wrap_plots(images, ncol = 3)
+plot1 <- stacked_images + patchwork::plot_annotation(
+  title = "AUCell scores of Neftel2019",
+  theme = theme(plot.title = element_text(size = 25))
+)
+print(plot1)
+```
+
+
+
+
+
+
+
+
 
 ## inspect genes
 ```{r}
@@ -271,4 +363,13 @@ ggplot(
     axis.text = element_text(size = 11),
     panel.grid.major = element_line(size = 0.5, color = "grey80")
   )
+```
+
+# testing 
+```{r}
+VlnPlot(
+  seu_singlet_tumor,
+  "GFAP"
+  # "SOX2"
+)
 ```

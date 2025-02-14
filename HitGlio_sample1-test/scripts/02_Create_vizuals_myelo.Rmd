@@ -2,6 +2,14 @@
 title: "HIT-GLIO sample1 myeloid clusters annotation"
 author: "MF"
 date: "`r Sys.Date()`"
+# output: powerpoint_presentation
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+      number_sections: true
 ---
 
 
@@ -20,39 +28,76 @@ suppressPackageStartupMessages({
   library(AUCell)
   library(GSVA)
   library(msigdbr)
+  library(Nebulosa)
+  library(monocle3)
+  library(SeuratExtend)
 })
 ```
 
 
 ```{r}
-seu_singlet_myelo <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/30-Jan-2025-sue_singlet_myelo") # nolint
+# seu_singlet_myelo <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/07-Feb-2025_seu_singlet_myelo.rds") # nolint
+
+seu_singlet_myelo <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/10-Feb-2025_seu_singlet_myelo_silhouette.rds") # nolint
+
+group_by <- "wsnn_res.0.4"
+
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/functions.R")
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Global_vars.R")
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/cell_features.R")
 
 set.seed(123)
 ```
 
-# Predictions:
-Microglia: 1
-Chemotaxis macrophages: 
-Macrophages: 
-Monocytes: 
-DC: 
-Unknown: 
-Mes-microglia: 
+# Annotate Clusters:
+```{r, echo=FALSE}
+nclusters <- length(unique(seu_singlet_myelo@meta.data$wsnn_res.0.4))
+myelo_cluster_annotation <- rep("unannotated", nclusters)
+names(myelo_cluster_annotation) <- levels(
+  seu_singlet_myelo@meta.data$wsnn_res.0.4
+)
+
+myelo_cluster_annotation["1"] <- "Mg-TAM (M1) (CD14+, CD74+) [C1]"
+myelo_cluster_annotation["2"] <- "Mg-TAM (M2) (CD14+, CD74-) [C2]"
+myelo_cluster_annotation["3"] <- "Microglia [C3]"
+myelo_cluster_annotation["4"] <- "Microglia [C3]"
+myelo_cluster_annotation["5"] <- "Mo-TAM (1) [C4]"
+myelo_cluster_annotation["6"] <- "Monocytes/MDSC (CD11b+, CD14-) [C5]"
+myelo_cluster_annotation["7"] <- "Neutrophils [C6]"
+myelo_cluster_annotation["8"] <- "Mo-TAM (2) [C7]"
+myelo_cluster_annotation["9"] <- "Doublets [C8]"
+myelo_cluster_annotation["10"] <- "cDC1 [C9]"
+myelo_cluster_annotation["11"] <- "B-Cell [C10]"
+myelo_cluster_annotation["12"] <- "pDC [C11]"
+
+seu_singlet_myelo <- SetIdent(
+  seu_singlet_myelo,
+  value = seu_singlet_myelo@meta.data$wsnn_res.0.4
+)
+seu_singlet_myelo <- RenameIdents(seu_singlet_myelo, myelo_cluster_annotation)
+seu_singlet_myelo@meta.data$manual_anno <- Idents(seu_singlet_myelo)
+```
 
 # Dimplot of subsetted myeloid clusters
 ```{r}
-DimPlot(
+SeuratExtend::DimPlot2(
   seu_singlet_myelo,
   reduction = "wnn.umap",
-  label = TRUE
-)
+  label = TRUE,
+  label.color = "black",
+  index.title = "C",
+  repel = TRUE,
+  box = TRUE,
+  theme = NoAxes()
+) + theme_umap_arrows()
 
-DimPlot(
+DimPlot2(
   seu_singlet_myelo,
   group.by = "MULTI_ID",
   reduction = "wnn.umap",
-  label = TRUE
-)
+  label = TRUE,
+  theme = NoAxes()
+) + theme_umap_arrows()
 ```
 
 # CellTypist to predict labels
@@ -118,7 +163,7 @@ subset_cells <- list()
 # Loop through each cluster and sample cells
 for (cluster in unique(cluster_ids)) {
   cells_in_cluster <- WhichCells(seu_singlet_myelo, idents = cluster)
-  sampled_cells <- sample(cells_in_cluster, size = 100)
+  sampled_cells <- sample(cells_in_cluster, size = 40)
   # size = min(100, length(cells_in_cluster)) # if no of cell smaller than 100, select max cells in cluster # nolint
   subset_cells[[cluster]] <- sampled_cells
 }
@@ -160,12 +205,9 @@ top25 <- markers_genes %>%
 ```{r}
 for (i in unique(top25$cluster)) {
   # print genes protted on barplots (top25 genes in each cluster)
-  top25 |>
-    group_by(cluster) |>
-    filter(cluster == i) |>
-    select(gene) |>
-    as.vector() |>
-    print()
+  omg <- top25 |>
+    filter(cluster == i)
+  print(omg$gene)
 
   barplot(
     sort(setNames(top25$avg_log2FC, top25$gene)[top25$cluster == i], FALSE),
@@ -180,7 +222,7 @@ for (i in unique(top25$cluster)) {
 ```
 
 ## make heatmap with top 10 genes
-```{r, fig.width=10, fig.height=12}
+```{r, echo=FALSE, warning=FALSE, error=FALSE, fig.width=10, fig.height=17}
 top_x <- markers_genes %>%
   group_by(cluster) %>%
   slice_min(p_val_adj, n = 10, with_ties = FALSE)
@@ -196,7 +238,7 @@ DoHeatmap(
   seurat_subset_heatmap,
   features = as.character(unique(top_x$gene)),
   # group.by = "cluster.sct.myelo", assay = "RNA"
-  group.by = "wsnn_res.0.4", assay = "RNA"
+  group.by = "ident", assay = "RNA"
 )
 ```
 
@@ -204,12 +246,12 @@ DoHeatmap(
 ```{r, fig.width=10, fig.height=15}
 DotPlot(
   seurat_subset_heatmap,
-  features = rev(as.character(unique(top_x$gene))), group.by = "cluster.sct.myelo", assay = "RNA"
+  features = rev(as.character(unique(top_x$gene))), group.by = "manual_anno", assay = "RNA"
 ) + coord_flip() + mycolor2
 ```
 
 ## validate top10 gene expression on vlnplots
-```{r, fig.width=12, fig.height=9}
+```{r, fig.width=12, fig.height=15}
 for (i in unique(top_x$cluster)) {
   top_x_cluster <- top_x |>
     filter(cluster == i)
@@ -226,18 +268,52 @@ for (i in unique(top_x$cluster)) {
 }
 ```
 
+## show topgenes of each cluster in feature and density plots
+### FeaturePlots
+```{r, echo=FALSE, warning=FALSE, fig.width=20, fig.height=15}
+for (i in unique(top_x$cluster)) {
+  top_x_cluster <- top_x |>
+    filter(cluster == i)
+
+  feat1 <- FeaturePlot(
+    seu_singlet_myelo,
+    as.vector(top_x_cluster$gene),
+    pt.size = 1,
+    label = TRUE,
+    reduction = "wnn.umap"
+  ) + patchwork::plot_annotation(
+    title = paste0("Top genes in Cluster ", i),
+    theme = theme(plot.title = element_text(size = 25))
+  ) & mycolor2 & NoAxes()
+  print(feat1)
+
+  dens1 <- plot_density(
+    seu_singlet_myelo,
+    as.vector(top_x_cluster$gene),
+    size = 1.5,
+    joint = TRUE,
+    reduction = "wnn.umap"
+  ) + patchwork::plot_annotation(
+    title = paste0("Top genes in Cluster ", i),
+    theme = theme(plot.title = element_text(size = 25))
+  ) & NoAxes()
+  print(dens1)
+}
+```
+
 # Generate scores of marker gene sets using AUCell
 ## Run AUCEll
-```{r}
+```{r, echo = FALSE, warning=FALSE}
 expr_matrix <- as.matrix(
   GetAssayData(seu_singlet_myelo, layer = "data", assay = "RNA")
 )
 
-gene_rankings <- AUCell_buildRankings(expr_matrix, plotStats = TRUE)
+gene_rankings <- AUCell_buildRankings(expr_matrix, plotStats = FALSE)
 ```
 
 ### wang2024_hypoxic_macrophages
-```{r, echo=TRUE, message=FALSE, warning=FALSE}
+#### FeaturePlot of AUCell scores
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=20, fig.height=25}
 print(wang2024_hypoxic_macrophages)
 
 auc_scores <- AUCell_calcAUC(
@@ -248,7 +324,7 @@ auc_scores <- AUCell_calcAUC(
 auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
 seu_singlet_myelo <- AddMetaData(seu_singlet_myelo, metadata = auc_matrix)
 
-map(
+images <- map(
   names(wang2024_hypoxic_macrophages),
   ~ FeaturePlot(
     seu_singlet_myelo,
@@ -258,6 +334,13 @@ map(
     reduction = "wnn.umap"
   ) & mycolor2 & NoAxes()
 )
+
+stacked_images <- patchwork::wrap_plots(images, ncol = 3)
+plot1 <- stacked_images + patchwork::plot_annotation(
+  title = "Wang2024 hypoxic macrophages",
+  theme = theme(plot.title = element_text(size = 25))
+)
+print(plot1)
 
 # density w przypadku AUCell scores nie ma sensu, bo mocno przejaskrawia
 # map(
@@ -273,15 +356,10 @@ map(
 
 # ale spróbujmy density w przypadku samych genów, nie scora
 # clean wang2024 list, bc some features are not present in my data, and density_plot need all to be present
-valid_features <- function(features_list, seurat_obj) {
-  features_list[features_list %in% rownames(seurat_obj)]
-}
+```
 
-wang2024_hypoxic_macrophages_cleaned <- map(
-  wang2024_hypoxic_macrophages,
-  ~ valid_features(.x, seu_singlet_myelo)
-)
-
+#### Density Plot of genes
+```{r, echo = FALSE, fig.width=20, fig.height=20}
 wang2024_hypoxic_macrophages_cleaned <- map(
   wang2024_hypoxic_macrophages,
   function(x) x[x %in% rownames(seu_singlet_myelo)]
@@ -300,18 +378,75 @@ imap( # indexed map
     theme = theme(plot.title = element_text(size = 25))
   ) & NoAxes()
 )
-
-
-
-
-colnames(seu_singlet_myelo@meta.data)
-seu_singlet_myelo@meta.data |>
-  filter(wsnn_res.0.4 == 4) |>
-  select(Monocyte_derived_TAM)
 ```
 
+### Greenwald2024_Spatial transcriptomics
+#### FeaturePlot of AUCell scores
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=20, fig.height=25}
+print(greenwald2024)
+
+auc_scores <- AUCell_calcAUC(
+  greenwald2024,
+  gene_rankings
+)
+
+auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
+seu_singlet_myelo <- AddMetaData(seu_singlet_myelo, metadata = auc_matrix)
+
+images <- map(
+  names(greenwald2024),
+  ~ FeaturePlot(
+    seu_singlet_myelo,
+    features = .x,
+    pt.size = 1,
+    label = TRUE,
+    reduction = "wnn.umap"
+  ) & mycolor2 & NoAxes()
+)
+
+stacked_images <- patchwork::wrap_plots(images, ncol = 3)
+plot1 <- stacked_images + patchwork::plot_annotation(
+  title = "Greenwald2024 Integrative spatial analysis reveals a multi-layered organization of glioblastoma",
+  theme = theme(plot.title = element_text(size = 25))
+)
+print(plot1)
+```
+
+### Beck2021 pHGG metapropgrams
+```{r}
+print(liu2022)
+
+auc_scores <- AUCell_calcAUC(
+  liu2022,
+  gene_rankings
+)
+
+auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
+seu_singlet_myelo <- AddMetaData(seu_singlet_myelo, metadata = auc_matrix)
+
+images <- map(
+  names(liu2022),
+  ~ FeaturePlot(
+    seu_singlet_myelo,
+    features = .x,
+    pt.size = 1,
+    label = TRUE,
+    reduction = "wnn.umap"
+  ) & mycolor2 & NoAxes()
+)
+
+stacked_images <- patchwork::wrap_plots(images, ncol = 3)
+plot1 <- stacked_images + patchwork::plot_annotation(
+  title = "AUCell scores of Liu2022 The Landscape of Tumor Cell States and Spatial Organization in H3-K27M Mutant Diffuse Midline Glioma",
+  theme = theme(plot.title = element_text(size = 25))
+)
+print(plot1)
+```
+
+
+
 ### VlnPlot of AUC scores of microglia/macrophages core markers
-```{r, fig.width=10, fig.height=12}
+```{r, fig.width=15, fig.height=12}
 # Idents(seu_singlet_myelo) <- "merged_to_one"
 
 mgmc <- list(
@@ -330,7 +465,8 @@ gene_rankings <- AUCell_buildRankings(expr_matrix, plotStats = FALSE)
 auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
 seu_singlet_myelo <- AddMetaData(seu_singlet_myelo, metadata = auc_matrix)
 ```
-```{r, fig.width=10, fig.height=4}
+
+```{r, fig.width=10, fig.height=15}
 VlnPlot(
   seu_singlet_myelo,
   features = c(
@@ -340,6 +476,21 @@ VlnPlot(
   )
 )
 ```
+
+### VlnPlot of expression of individual genes of microglia/macropahges core markers
+```{r, fig.width=18, fig.height=14}
+imap(
+  mgmc,
+  ~ VlnPlot(
+    seu_singlet_myelo,
+    features = .x
+  ) + patchwork::plot_annotation(
+    title = .y,
+    theme = theme(plot.title = element_text(size = 25))
+  )
+)
+```
+
 
 ### FeaturePlot of AUC scores of microglia/macrophages core markers
 ```{r, fig.width=12, fig.height=6}
@@ -354,18 +505,23 @@ FeaturePlot(
   label = TRUE,
   reduction = "wnn.umap"
 ) & mycolor2 & NoAxes()
+```
 
-plot_density(
-  seu_singlet_myelo,
-  features = c(
-    "microglia1",
-    "microglia2",
-    "macrophages1"
-  ),
-  size = 1.5,
-  # joint = "TRUE",
-  reduction = "wnn.umap"
-) & NoAxes()
+### DensityPlot of microglia/macrophages genes
+```{r, fig.width=20, fig.height=20}
+imap( # indexed map
+  mgmc,
+  ~ plot_density(
+    seu_singlet_myelo,
+    features = .x,
+    size = 1.5,
+    joint = TRUE,
+    reduction = "wnn.umap"
+  ) + patchwork::plot_annotation(
+    title = .y, # name of named vector in a list
+    theme = theme(plot.title = element_text(size = 25))
+  ) & NoAxes()
+)
 ```
 
 ### Heatmap z-score of microglia/macrophages core markers
@@ -382,40 +538,45 @@ seu_singlet_myelo_heatmap <- ScaleData(
 DoHeatmap(
   seu_singlet_myelo_heatmap,
   features = features,
-  group.by = "wsnn_res.0.4", assay = "RNA"
+  group.by = "ident", assay = "RNA"
 )
 ```
 
 ### FeaturePlot of microglia/macrophages selected core markers
-```{r, fig.width=10, fig.height=9}
-FeaturePlot(
-  seu_singlet_myelo,
-  c(
-    "P2RY12", "TMEM119",
-    "CD163", "TGFBI"
-  ),
-  reduction = "wnn.umap",
-  cols = c("lightgrey", "red"),
-  pt.size = 1,
-  label = TRUE
-) & NoAxes()
+```{r, fig.width=7, fig.height=6}
+core_list <- list(
+  mg_core = c("P2RY12", "TMEM119", "CX3CR1"),
+  mac_core <- c("CD163", "TGFBI", "CD68", "AIF1")
+)
 
-DefaultAssay(seu_singlet_myelo) <- "RNA"
-plot_density(
-  seu_singlet_myelo,
-  # c(
-  #   "P2RY12", "TMEM119",
-  #   "CD163", "TGFBI"
-  # ),
-  "CCR5",
-  size = 1.5,
-  # joint = "TRUE",
-  reduction = "wnn.umap"
-) & NoAxes()
+map(
+  core_list,
+  ~ FeaturePlot(
+    seu_singlet_myelo,
+    features = .x,
+    reduction = "wnn.umap",
+    pt.size = 1,
+    label = TRUE
+  ) & mycolor2 & NoAxes()
+)
+```
+
+### DensityPlot of microglia/macrophages selected core markers
+```{r}
+map(
+  core_list,
+  ~ plot_density(
+    seu_singlet_myelo,
+    features = .x,
+    size = 1.5,
+    joint = "TRUE",
+    reduction = "wnn.umap"
+  ) & NoAxes()
+)
 ```
 
 # ADT features
-```{r, eval=FALSE}
+```{r, eval=FALSE, echo=FALSE}
 DefaultAssay(seu_singlet_myelo) <- "ADT.dsb.threshold"
 features <- get_features(seu_singlet_myelo, "ADT.dsb.threshold")
 length(features)
@@ -431,7 +592,7 @@ for (i in seq_along(f_list)) {
     features = f_list[[i]],
     max.cutoff = NA,
     show = FALSE,
-    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/05-feb-25_sct_dsb-threshold_myelo/panel_", i), # nolint
+    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_myelo/panel_", i), # nolint
     ggheight = 20,
     ggwidth = 20
   ) & NoAxes()
@@ -446,7 +607,7 @@ for (i in seq_along(f_list)) {
   ) & NoAxes() & inferno
 
   ggsave(
-    paste0("singleCell_LAB/HitGlio_sample1-test/plots/05-feb-25_sct_dsb-threshold_myelo/panel_density_", i, ".png"),
+    paste0("singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_myelo/panel_density_", i, ".png"),
     plot,
     height = 20,
     width = 20
@@ -455,6 +616,21 @@ for (i in seq_along(f_list)) {
 ?plot_density
 
 DefaultAssay(seu_singlet_myelo) <- "RNA"
+```
+
+## load adt features graphs
+### feature plot
+```{r, echo=FALSE, fig.cap="ADT filtered features",}
+knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_myelo/panel_1.png") # nolint
+
+knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_myelo/panel_2.png") # nolint
+```
+
+### density plot
+```{r, echo=FALSE, fig.cap="ADT filtered features, density plot",}
+knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_myelo/panel_density_1.png") # nolint
+
+knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_myelo/panel_density_2.png") # nolint
 ```
 
 # GSVA of HALLMARK collection
@@ -491,12 +667,12 @@ seurat_subset[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
 DefaultAssay(seurat_subset) <- gsva_cx
 
 # avg_pathway_scores <- AverageExpression(seu_singlet_myelo, assays = gsva_Cx)$GSVA
-avg_pathway_scores <- AverageExpression(seurat_subset, assays = gsva_Cx)$GSVA
+avg_pathway_scores <- AverageExpression(seurat_subset, assays = gsva_cx)$GSVA
 
 markers <- Seurat::FindAllMarkers(
   # seu_singlet_myelo,
   seurat_subset,
-  assay = gsva_Cx,
+  assay = gsva_cx,
   test_use = "MAST",
   only.pos = TRUE
 ) |>
@@ -521,6 +697,7 @@ ggplot(
   theme_minimal() +
   theme(
     axis.text = element_text(size = 11),
+    axis.text.x = element_text(angle = 90, hjust = 1),
     panel.grid.major = element_line(size = 0.5, color = "grey80")
   )
 ```
@@ -559,12 +736,12 @@ seurat_subset[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
 DefaultAssay(seurat_subset) <- gsva_cx
 
 # avg_pathway_scores <- AverageExpression(seu_singlet_myelo, assays = gsva_Cx)$GSVA
-avg_pathway_scores <- AverageExpression(seurat_subset, assays = gsva_Cx)$GSVA
+avg_pathway_scores <- AverageExpression(seurat_subset, assays = gsva_cx)$GSVA
 
 markers <- Seurat::FindAllMarkers(
   # seu_singlet_myelo,
   seurat_subset,
-  assay = gsva_Cx,
+  assay = gsva_cx,
   test_use = "MAST",
   only.pos = TRUE
 ) |>
@@ -589,14 +766,70 @@ ggplot(
   theme_minimal() +
   theme(
     axis.text = element_text(size = 11),
+    axis.text.x = element_text(angle = 90, hjust = 1),
     panel.grid.major = element_line(size = 0.5, color = "grey80")
   )
 ```
 
+# Trajectory analysis with Monocle3
+here one need to select starting point, as I don't want to do that everytime Rmd is knitted, all those cells will not be evaluated, but only prepared .png will be loaded.
 
+## Run analysis
+```{r, eval=FALSE, echo=FALSE}
+## Convert SingleCellExperiment object to CellDataSet
+cds <- SeuratWrappers::as.cell_data_set(seu_singlet_myelo)
 
-## inspect genes
+## Extract UMAP embeddings from Seurat
+umap_coords <- Embeddings(seu_singlet_myelo, reduction = "wnn.umap")
+
+## Add UMAP embeddings to Monocle3
+reducedDims(cds)$UMAP <- umap_coords
+
+## Cluster the cells
+cds <- cluster_cells(cds, reduction_method = "UMAP")
+
+## Plot cells
+cds <- learn_graph(cds, use_partition = TRUE)
+
+plot_cells(cds,
+  label_groups_by_cluster = FALSE,
+  label_leaves = FALSE,
+  label_branch_points = FALSE,
+  color_cells_by = "seurat_clusters"
+)
+
+cds <- order_cells(cds)
+
+plot <- plot_cells(cds,
+  color_cells_by = "pseudotime",
+  label_cell_groups = FALSE,
+  label_leaves = FALSE,
+  label_branch_points = FALSE,
+  graph_label_size = 1.5,
+)
+ggsave("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-2025_seu_myelo_mococle3.png", plot)
+```
+
+## Load .png with final result
+```{r, echo=FALSE, fig.cap="Monocle3 result",}
+knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-2025_seu_myelo_mococle3.png") # nolint
+```
+
+# Check for tumor cells with InferCNV
 ```{r}
+
+```
+
+# Ligand-Receptor analysis
+```{r}
+
+```
+
+
+
+
+# testing ground
+```{r, eval = FALSE, echo = FALSE}
 top_x_inspect <- markers_genes %>%
   group_by(cluster) %>%
   slice_min(p_val_adj, n = 100, with_ties = FALSE)
@@ -624,8 +857,6 @@ mycolor3 <- viridis::scale_color_viridis(
   direction = 1
 )
 
-library(Nebulosa)
-
 plot_density(
   seu_singlet_myelo,
   c("GFAP", "PTPRZ1", "SCG3", "SOX2", "SOX6", "BCAN", "NOVA1", "NRCAM", "TUBB2B"),
@@ -634,17 +865,14 @@ plot_density(
   joint = "TRUE",
   reduction = "wnn.umap"
 ) & NoAxes()
-?plot_density
 
-Idents(seu_singlet_myelo) <- "wsnn_res.0.4"
+Idents(seu_singlet_myelo) <- group_by
 VlnPlot(
   seu_singlet_myelo,
   "GFAP"
   # "SOX2"
 )
-```
 
-```{r}
 glioblastoma_proneural <- c(
   "ABAT", "ACTR1A", "ALCAM", "AMOTL2", "KDM1A", "ARHGEF9", "ASCL1", "ATAD5", "ATP1A3", "ADGRB3",
   "BCAN", "BCL7A", "BCOR", "BEX1", "C1QL1", "INAVA", "MIR9-1HG", "FERMT1", "ATAT1", "CA10",
@@ -665,6 +893,22 @@ glioblastoma_proneural <- c(
   "TSPAN3", "TTC3", "TTYH1", "VAX2", "VEZF1", "WASF1", "DCAF7", "YPEL1", "ZEB2", "ZNF184",
   "ZNF248", "ZNF286A", "ZNF510", "ZFP69B", "ZNF711", "ZNF804A"
 )
+```
 
-test <- glioblastoma_proneural %in% top_x_inspect
+
+```{r}
+top_x <- markers_genes %>%
+  group_by(cluster) %>%
+  slice_min(p_val_adj, n = 50, with_ties = FALSE)
+
+cl3 <- top_x |>
+  filter(cluster == myelo_cluster_annotation[3])
+
+print(cl3, n = 100)
+```
+
+
+# transfer labels to the original seurat object
+```{r}
+
 ```

@@ -17,6 +17,7 @@ suppressPackageStartupMessages({
   library(sceasy) # convert to anndata, scvi integration
   library(dittoSeq)
   library(dsb)
+  require(cluster)
 })
 ```
 
@@ -463,7 +464,7 @@ nie normalizuje bo nie trzeba i nie robie pca poniewaz używam totalvi
 ```{r}
 DimPlot(
   seu_singlet,
-  reduction = "umap.totalvi.sct",
+  reduction = "wnn.umap",
   label = TRUE
 )
 ```
@@ -492,13 +493,17 @@ seu_singlet_myelo <- seu_normalize_var_scale_pca(
   run_pca = TRUE,
   pca.reduction.name = "pca.myelo.log",
   umap.reduction.name = "umap.myelo.pca.log",
-  dims = 1:10,
-  k.param = 30,
+  dims = 1:30,
+  k.param = 20,
   algorithm = 4,
-  resolution = 0.2,
+  # resolution = 0.2,
+  resolution = 0.1, # czy jest znaczenie jaką tu res. wybiore? NIE
   group.singletons = FALSE
 )
 DimPlot(seu_singlet_myelo, reduction = "umap.myelo.pca.log", label = TRUE)
+
+ElbowPlot(seu_singlet_myelo, ndims = 50)
+ElbowPlot(seu_singlet_myelo, ndims = 50, reduction = "apca")
 
 # lets see what will happen if I'll do NN again on subset
 DefaultAssay(seu_singlet_myelo) <- "ADT.dsb.threshold"
@@ -512,17 +517,22 @@ seu_singlet_myelo <- seu_singlet_myelo %>%
 seu_singlet_myelo <- FindMultiModalNeighbors(
   seu_singlet_myelo,
   reduction.list = list("pca.myelo.log", "apca.myelo"),
-  dims.list = list(1:10, 1:8),
+  dims.list = list(1:30, 1:20),
+  k.nn = 30,
+  knn.range = 600,
+  # dims.list = list(1:30, 1:20),
   modality.weight.name = "RNA.weight",
   verbose = FALSE
 )
 
+# resolution <- 0.4
+resolution <- 0.9
 # cluster
 seu_singlet_myelo <- FindClusters(
   seu_singlet_myelo,
   graph.name = "wsnn",
   algorithm = 4,
-  resolution = 0.4,
+  resolution = resolution,
   verbose = FALSE,
   random.seed = 1990
 )
@@ -534,8 +544,10 @@ seu_singlet_myelo <- RunUMAP(
   reduction.key = "wnnUMAP_"
 )
 
-colnames(seu_singlet_myelo@meta.data)
-Idents(seu_singlet_myelo) <- "wsnn_res.0.4"
+Idents(seu_singlet_myelo) <- paste0("wsnn_res.", as.character(resolution))
+# colnames(seu_singlet_myelo@meta.data)
+# Idents(seu_singlet_myelo) <- "wsnn_res.0.4"
+
 # Idents(seu_singlet) <- "cluster.totalvi"
 
 DimPlot(
@@ -548,10 +560,43 @@ DimPlot(
 table(seu_singlet_myelo@active.ident)
 
 # for now remove clusters 13, 14, 15 as they have 41, 40 and 5 cells
-seu_singlet_myelo <- subset(seu_singlet_myelo, idents = c(1:12)) # remove
+# seu_singlet_myelo <- subset(seu_singlet_myelo, idents = c(1:12)) # remove
+# seu_singlet_myelo <- subset(seu_singlet_myelo, idents = c(1:14)) # remove
+# seu_singlet_myelo <- subset(seu_singlet_myelo, idents = c(1:11)) # remove
 
-table(seu_singlet_myelo@active.ident)
+# table(seu_singlet_myelo@active.ident)
 
+# evaluate clustering
+# dist.matrix <- dist(x = Embeddings(object = seu_singlet_myelo[["pca"]])[, 1:30])
+# dist.matrix <- dist(x = Embeddings(object = seu_singlet_myelo[["pca.myelo.log"]]))
+# dist.matrix <- dist(x = Embeddings(object = seu_singlet_myelo[["apca"]]))
+
+colnames(seu_singlet_myelo@meta.data)
+
+graph_adj <- as.matrix(seu_singlet_myelo@graphs$wsnn) # Weighted SNN graph
+dist_snn <- as.dist(1 - graph_adj)
+
+# dist.matrix <- dist(Embeddings(seu_singlet_myelo[["wnn.umap"]]))
+sil <- silhouette(
+  as.numeric(as.character(seu_singlet_myelo@meta.data$wsnn_res.0.9)),
+  dist = dist_snn
+)
+# sil <- silhouette(
+# as.numeric(as.character(seu_singlet_myelo@meta.data$cluster.log.myelo)), dist=dist.matrix
+# )
+
+head(sil)
+mean(sil[, 3])
+
+cluster_sil_scores <- aggregate(sil[, 3], by = list(sil[, 1]), mean)
+cluster_sil_scores
+
+
+
+
+saveRDS(seu_singlet_myelo, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/10-Feb-2025_seu_singlet_myelo_silhouette.rds")
+
+saveRDS(seu_singlet_myelo, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/07-Feb-2025_seu_singlet_myelo_res.0.5.rds")
 # go to create vizuals
 ```
 
@@ -572,33 +617,57 @@ saveRDS(seu_singlet_myelo, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/04
 # Analyze tumor cluster
 ```{r}
 DefaultAssay(seu_singlet) <- "SCT"
-Idents(seu_singlet) <- "cluster.totalvi"
+Idents(seu_singlet) <- "wsnn_res.0.4"
 DimPlot(
   seu_singlet,
-  reduction = "umap.totalvi.sct",
+  reduction = "wnn.umap",
   label = TRUE
 )
 
-seu_singlet_tumor <- subset(seu_singlet, idents = c(20, 24, 9, 28, 29, 16))
+seu_singlet_tumor <- subset(seu_singlet, idents = c(14, 10))
+
+# tu chyba nie ma sensu, żeby robić wnn z ADT?
+
 DefaultAssay(seu_singlet_tumor) <- "SCT"
 seu_singlet_tumor
 Idents(seu_singlet_tumor)
 
 seu_singlet_tumor <- seu_normalize_var_scale_pca(
   seu_singlet_tumor,
-  normalize = "sct",
-  cluster.name = "cluster.sct.tumor",
+  normalize = "log",
+  cluster.name = "cluster.log.tumor",
   run_pca = TRUE,
-  pca.reduction.name = "pca.tumor.sct",
-  umap.reduction.name = "umap.tumor.pca.sct",
-  dims = 1:30,
-  k.param = 30,
+  pca.reduction.name = "pca.tumor.log",
+  umap.reduction.name = "umap.tumor.pca.log",
+  dims = 1:10,
+  k.param = 50,
   algorithm = 4,
-  resolution = 0.3,
+  resolution = 0.5,
   group.singletons = FALSE
 )
-DimPlot(seu_singlet_tumor, reduction = "umap.tumor.pca.sct", label = TRUE)
-DimPlot(seu_singlet_tumor, reduction = "umap.totalvi.sct", label = TRUE)
+DimPlot(seu_singlet_tumor, reduction = "umap.tumor.pca.log", label = TRUE)
+DimPlot(seu_singlet_tumor,
+  group.by = "MULTI_ID",
+  reduction = "umap.tumor.pca.log",
+  label = TRUE
+)
+
+dist.matrix <- dist(
+  x = Embeddings(object = seu_singlet_tumor[["pca.tumor.log"]])[, 1:10]
+)
+sil <- silhouette(
+  as.numeric(as.character(seu_singlet_tumor@meta.data$cluster.log.tumor)),
+  dist = dist.matrix
+)
+
+head(sil)
+mean(sil[, 3])
+
+cluster_sil_scores <- aggregate(sil[, 3], by = list(sil[, 1]), mean)
+cluster_sil_scores
+
+
+
 
 saveRDS(seu_singlet_tumor, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/30-Jan-2025-sue_singlet_tumor") # nolint
 ```
@@ -794,7 +863,7 @@ Idents(seu_singlet) <- "wsnn_res.0.4"
 DimPlot(
   seu_singlet,
   reduction = "wnn.umap",
-  group.by = "MULTI_ID",
+  # group.by = "MULTI_ID",
   label = TRUE
 )
 

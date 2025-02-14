@@ -57,7 +57,8 @@ cds
 
 
 # Extract UMAP embeddings from Seurat
-umap_coords <- Embeddings(seu_singlet_myelo, reduction = "umap.myelo.pca.sct")
+# umap_coords <- Embeddings(seu_singlet_myelo, reduction = "umap.myelo.pca.sct")
+umap_coords <- Embeddings(seu_singlet_myelo, reduction = "wnn.umap")
 
 # Add UMAP embeddings to Monocle3
 reducedDims(cds)$UMAP <- umap_coords

@@ -149,7 +149,14 @@ remove_doublets_w_dfinder <- function(seu_singlet) {
   return(seu_singlet)
 }
 
-
+# function for filtering out genes not present in my suerat object,
+# required for Nebulosa::plot_density() as it required all genes to be
+# present in the dateset
+# could be replaced in-place by map(), for example:
+# function(x) x[x %in% rownames(seu_singlet_myelo)]
+valid_features <- function(features_list, seurat_obj) {
+  features_list[features_list %in% rownames(seurat_obj)]
+}
 
 
 
