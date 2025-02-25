@@ -2,7 +2,16 @@
 title: "HIT-GLIO sample1 tumor clusters annotation"
 author: "MF"
 date: "`r Sys.Date()`"
+# output: powerpoint_presentation
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+      number_sections: true
 ---
+
 
 ```{r}
 suppressPackageStartupMessages({
@@ -19,18 +28,28 @@ suppressPackageStartupMessages({
   library(AUCell)
   library(GSVA)
   library(msigdbr)
+  library(Nebulosa)
+  library(monocle3)
+  library(SeuratExtend)
+  # library(escape)
+  library(fgsea)
+  library(DT)
 })
 ```
 
 ```{r}
 seu_singlet_tumor <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/30-Jan-2025-sue_singlet_tumor") # nolint
 
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/functions.R")
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Global_vars.R")
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/cell_features.R")
+
 set.seed(123)
 ```
 
 # Azimuth
 nie wiem czy jest sens, raczej nie
-```{r}
+```{r, eval=FALSE}
 library(Azimuth)
 library(SeuratDisk)
 library(SeuratData)
@@ -279,97 +298,369 @@ plot1 <- stacked_images + patchwork::plot_annotation(
 print(plot1)
 ```
 
-
-
-
-
-
-
-
-
-## inspect genes
+### Filbin2018 metapropgrams
 ```{r}
-top_x_inspect <- markers_genes %>%
-  group_by(cluster) %>%
-  slice_min(p_val_adj, n = 50, with_ties = FALSE)
+filbin2018 <- read_csv("/mnt/sda4/marker_genes/filbin2018.csv")
 
-top_x_inspect |>
-  filter(cluster == 3) |>
-  select(gene) |>
-  as.vector()
+print(filbin2018)
+
+auc_scores <- AUCell_calcAUC(
+  filbin2018,
+  gene_rankings
+)
+
+auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
+seu_singlet_tumor <- AddMetaData(seu_singlet_tumor, metadata = auc_matrix)
+
+images <- map(
+  names(filbin2018),
+  ~ FeaturePlot(
+    seu_singlet_tumor,
+    features = .x,
+    pt.size = 1,
+    label = TRUE,
+    reduction = "umap.tumor.pca.log"
+  ) & mycolor2 & NoAxes()
+)
+
+stacked_images <- patchwork::wrap_plots(images, ncol = 3)
+plot1 <- stacked_images + patchwork::plot_annotation(
+  title = "AUCell scores of Filbin2018",
+  theme = theme(plot.title = element_text(size = 25))
+)
+print(plot1)
 ```
 
-# GSVA of C2 (currated gene-sets) collection
-made on seurat_subset (randomly selected 60 cells from each cluster, the same as for previous analysis)
-```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=15}
-gene_sets <- msigdbr(species = "Homo sapiens", category = "C2")
-gene_set_list <- split(gene_sets$gene_symbol, gene_sets$gs_name) # wooolooloo
-
-expr_matrix <- as.matrix(
-  GetAssayData(
-    seurat_subset,
-    layer = "data", assay = "RNA"
-  )
-)
-
-params <- zscoreParam(
-  expr_matrix,
-  gene_set_list,
-  minSize = 10,
-  maxSize = 500
-)
-
-gsva_es <- gsva(
-  params,
-  verbose = TRUE
-)
-
-gsva_cx <- "GSVA_H"
-
-# seu_singlet_myelo[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
-seurat_subset[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
-
-# DefaultAssay(seu_singlet_myelo) <- gsva_Cx
-DefaultAssay(seurat_subset) <- gsva_cx
-
-# avg_pathway_scores <- AverageExpression(seu_singlet_myelo, assays = gsva_Cx)$GSVA
-avg_pathway_scores <- AverageExpression(seurat_subset, assays = gsva_Cx)$GSVA
-
-avg_pathway_scores_filtered <- avg_pathway_scores |>
-  as_tibble(rownames = "pathway") |>
-  filter(pathway == "VERHAAK-GLIOBLASTOMA-MESENCHYMAL" |
-    pathway == "VERHAAK-GLIOBLASTOMA-NEURAL" |
-    pathway == "VERHAAK-GLIOBLASTOMA-PRONEURAL" |
-    pathway == "VERHAAK-GLIOBLASTOMA-CLASSICAL")
-
-print(avg_pathway_scores_filtered_long, n = 30)
-
-avg_pathway_scores_filtered_long <- pivot_longer(
-  avg_pathway_scores_filtered,
-  cols = c(g1, g2, g3, g4, g5, g6)
-)
-
-ggplot(
-  avg_pathway_scores_filtered_long,
-  aes(x = pathway, y = name, size = log(value))
-) +
-  geom_point() +
-  scale_size_continuous(range = c(1, 10)) +
-  scale_color_gradient(low = "black", high = "lightgray") +
-  coord_flip() +
-  labs() +
-  theme_minimal() +
-  theme(
-    axis.text = element_text(size = 11),
-    panel.grid.major = element_line(size = 0.5, color = "grey80")
-  )
-```
-
-# testing 
-```{r}
-VlnPlot(
+# Pathway analysis
+## GSVA (GSVA using gsva package)
+The GSVA package provides an implementation of this approach for the following methods:
+* gsva (Hänzelmann, Castelo, and Guinney 2013). This is the default method of the package and similarly to ssGSEA, is a non-parametric method that uses the empirical CDFs of gene expression ranks inside and outside the gene set, but it starts by calculating an expression-level statistic that brings gene expression profiles with different dynamic ranges to a common scale.
+### GSVA msigdb Hallmark collection = 0 DE pathways
+```{r, eval=FALSE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
   seu_singlet_tumor,
-  "GFAP"
-  # "SOX2"
+  category = "H",
+  gsva_type = "gsva"
 )
+# as it is 0 pathways here, code for calculating and  plotting is removed
+```
+
+```{r}
+gsva_cx <- "GSVA_H"
+seu_singlet_tumor[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_tumor) <- gsva_cx
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_tumor,
+  assay = "GSVA_H",
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "GSVA top 40(20up+20down) DE (wilcox) Hallmark pathways in Cluster "
+)
+```
+
+### GSVA msgidb C2 collection
+```{r, eval=FALSE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_tumor,
+  category = "C2",
+  gsva_type = "gsva"
+)
+
+saveRDS(gsva_es, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/25-Feb-25_gsva_es_tumor_C2.rds") # nolint
+```
+
+```{r, echo=FALSE, warning=FALSE}
+# as gsva for C2 takes time, save and load .rds with gsva calculated
+gsva_es <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/25-Feb-25_gsva_es_tumor_C2.rds") # nolint
+
+gsva_cx <- "GSVA_C2"
+seu_singlet_tumor[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_tumor) <- gsva_cx
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_tumor,
+  assay = "GSVA_C2",
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "GSVA top 40(20up+20down) DE (wilcox) C2 pathways in Cluster "
+)
+```
+
+## zscore method (using gsva package)
+### zscore msigdb Hallmark collection
+```{r, eval=FALSE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_tumor,
+  category = "H",
+  gsva_type = "zscore"
+)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+# as gsva for C2 takes time, save and load .rds with gsva calculated
+gsva_cx <- "GSVA_H_zscore"
+seu_singlet_tumor[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_tumor) <- gsva_cx
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_tumor,
+  assay = gsva_cx,
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "zscoreGSVA top 40(20up+20down) DE (wilcox) Hallmark pathways in Cluster "
+)
+```
+
+### zscore msigdb C2 collection
+```{r, eval=TRUE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_tumor,
+  category = "C2",
+  gsva_type = "zscore"
+)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+gsva_cx <- "GSVA_C2_zscore"
+seu_singlet_tumor[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_tumor) <- gsva_cx
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE, message=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_tumor,
+  assay = gsva_cx,
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "zscoreGSVA top 40(20up+20down) DE (wilcox) Hallmark pathways in Cluster "
+)
+```
+
+## PLAGE (using GSVA package)
+*plage (Tomfohr, Lu, and Kepler 2005). Pathway level analysis of gene expression (PLAGE) standardizes expression profiles over the samples and then, for each gene set, it performs a singular value decomposition (SVD) over its genes. The coefficients of the first right-singular vector are returned as the estimates of pathway activity over the samples. Note that, because of how SVD is calculated, the sign of its singular vectors is arbitrary.
+
+## PLAGE msigdb Hallmark 
+```{r, eval=TRUE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_tumor,
+  category = "H",
+  gsva_type = "plage"
+)
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+# as gsva for C2 takes time, save and load .rds with gsva calculated
+gsva_cx <- "GSVA_H_plage"
+seu_singlet_tumor[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_tumor) <- gsva_cx
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_tumor,
+  assay = gsva_cx,
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, eval=TRUE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "plageGSVA top 40(20up+20down) DE (wilcox) Hallmark pathways in Cluster "
+)
+```
+
+## PLAGE msigdb C2 [NOT WORKING]
+```{r, eval=FALSE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_tumor,
+  category = "C2",
+  gsva_type = "plage"
+)
+
+# this one also takes a lot of time. save and load the results.
+saveRDS(gsva_es, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/25-Feb-25_gsva_es_tumor_C2_plage.rds") # nolint
+```
+
+```{r, eval=FALSE, echo=FALSE, warning=FALSE}
+# as gsva for C2 takes time, save and load .rds with gsva calculated
+gsva_es <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/25-Feb-25_gsva_es_tumor_C2_plage.rds") # nolint
+
+gsva_cx <- "GSVA_C2_plage"
+seu_singlet_tumor[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_tumor) <- gsva_cx
+```
+
+```{r, eval=FALSE, echo=FALSE, warning=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_tumor,
+  assay = gsva_cx,
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, eval=FALSE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "plageGSVA top 40(20up+20down) DE (wilcox) C2 gene sets in Cluster "
+)
+```
+
+# GSEA (using fgsea package)
+```{r}
+DefaultAssay(seu_singlet_tumor) <- "RNA"
+gsea_markers <- FindAllMarkers(
+  seu_singlet_tumor,
+  only.pos = FALSE,
+  logfc.threshold = 0,
+  min.pct = 0
+)
+head(gsea_markers)
+```
+
+## Hallmark 
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+for (i in unique(gsea_markers$cluster)) {
+  cluster_markers <- gsea_markers |>
+    filter(p_val_adj < 0.05) |>
+    filter(cluster == i) |>
+    mutate(myscore = sign(avg_log2FC) * abs(avg_log2FC) * -log10(p_val_adj))
+
+  ranked_genes <- cluster_markers$myscore
+  names(ranked_genes) <- cluster_markers$gene
+  ranked_genes <- sort(ranked_genes, decreasing = TRUE)
+  ranked_genes <- ranked_genes[is.finite(ranked_genes)]
+
+  top_pathways <- seu_gsea(ranked_genes, "H")
+  seu_gsea_plot(top_pathways, "H", i)
+}
+```
+
+## C2
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+for (i in unique(gsea_markers$cluster)) {
+  cluster_markers <- gsea_markers |>
+    filter(p_val_adj < 0.05) |>
+    filter(cluster == i) |>
+    mutate(myscore = sign(avg_log2FC) * abs(avg_log2FC) * -log10(p_val_adj))
+
+  ranked_genes <- cluster_markers$myscore
+  names(ranked_genes) <- cluster_markers$gene
+  ranked_genes <- sort(ranked_genes, decreasing = TRUE)
+  ranked_genes <- ranked_genes[is.finite(ranked_genes)]
+
+  top_pathways <- seu_gsea(ranked_genes, "C2")
+  seu_gsea_plot(top_pathways, "C2", i)
+}
 ```

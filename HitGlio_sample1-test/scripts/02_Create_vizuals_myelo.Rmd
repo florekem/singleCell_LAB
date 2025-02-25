@@ -13,7 +13,7 @@ output:
 ---
 
 
-```{r}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 suppressPackageStartupMessages({
   library(Seurat)
   library(ggplot2)
@@ -31,11 +31,14 @@ suppressPackageStartupMessages({
   library(Nebulosa)
   library(monocle3)
   library(SeuratExtend)
+  # library(escape)
+  library(fgsea)
+  library(DT)
 })
 ```
 
 
-```{r}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 # seu_singlet_myelo <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/07-Feb-2025_seu_singlet_myelo.rds") # nolint
 
 seu_singlet_myelo <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/10-Feb-2025_seu_singlet_myelo_silhouette.rds") # nolint
@@ -49,8 +52,7 @@ source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/cell_features.R")
 set.seed(123)
 ```
 
-# Annotate Clusters:
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 nclusters <- length(unique(seu_singlet_myelo@meta.data$wsnn_res.0.4))
 myelo_cluster_annotation <- rep("unannotated", nclusters)
 names(myelo_cluster_annotation) <- levels(
@@ -78,8 +80,8 @@ seu_singlet_myelo <- RenameIdents(seu_singlet_myelo, myelo_cluster_annotation)
 seu_singlet_myelo@meta.data$manual_anno <- Idents(seu_singlet_myelo)
 ```
 
-# Dimplot of subsetted myeloid clusters
-```{r}
+# Final Dimplot of myeloid clusters
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
 SeuratExtend::DimPlot2(
   seu_singlet_myelo,
   reduction = "wnn.umap",
@@ -87,6 +89,7 @@ SeuratExtend::DimPlot2(
   label.color = "black",
   index.title = "C",
   repel = TRUE,
+  pt.size = 1.3,
   box = TRUE,
   theme = NoAxes()
 ) + theme_umap_arrows()
@@ -96,6 +99,7 @@ DimPlot2(
   group.by = "MULTI_ID",
   reduction = "wnn.umap",
   label = TRUE,
+  pt.size = 1.3,
   theme = NoAxes()
 ) + theme_umap_arrows()
 ```
@@ -103,7 +107,7 @@ DimPlot2(
 # CellTypist to predict labels
 https://www.celltypist.org/
 prediction is based on Immune_ALL_high reference
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
 # annot <- read.csv("/mnt/sda4/cell_typist_predicted_labels.csv")
 # colnames(annot)
 # rownames(annot) <- annot$cell
@@ -173,7 +177,6 @@ subset_cells_all <- unlist(subset_cells)
 
 # Subset the Seurat object
 seurat_subset <- subset(seu_singlet_myelo, cells = subset_cells_all)
-seurat_subset
 
 seurat_subset <- NormalizeData(seurat_subset)
 seurat_subset <- ScaleData(seurat_subset)
@@ -196,7 +199,7 @@ markers_genes <- FindAllMarkers(
 ```
 
 ## draw barlopts with top25
-```{r}
+```{r, echo=FALSE}
 top25 <- markers_genes %>%
   group_by(cluster) %>%
   top_n(-25, p_val_adj)
@@ -222,7 +225,7 @@ for (i in unique(top25$cluster)) {
 ```
 
 ## make heatmap with top 10 genes
-```{r, echo=FALSE, warning=FALSE, error=FALSE, fig.width=10, fig.height=17}
+```{r, message=FALSE, echo=FALSE, warning=FALSE, error=FALSE, fig.width=10, fig.height=17}
 top_x <- markers_genes %>%
   group_by(cluster) %>%
   slice_min(p_val_adj, n = 10, with_ties = FALSE)
@@ -243,15 +246,17 @@ DoHeatmap(
 ```
 
 ## make dotplot with top 10 (same viz. as heatmap)
-```{r, fig.width=10, fig.height=15}
+```{r, echo=FALSE, message=FALSE, fig.width=10, fig.height=20}
 DotPlot(
   seurat_subset_heatmap,
   features = rev(as.character(unique(top_x$gene))), group.by = "manual_anno", assay = "RNA"
-) + coord_flip() + mycolor2
+) + coord_flip() + mycolor2 + theme(
+  axis.text.x = element_text(angle = 90, hjust = 1)
+)
 ```
 
 ## validate top10 gene expression on vlnplots
-```{r, fig.width=12, fig.height=15}
+```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=15}
 for (i in unique(top_x$cluster)) {
   top_x_cluster <- top_x |>
     filter(cluster == i)
@@ -270,7 +275,7 @@ for (i in unique(top_x$cluster)) {
 
 ## show topgenes of each cluster in feature and density plots
 ### FeaturePlots
-```{r, echo=FALSE, warning=FALSE, fig.width=20, fig.height=15}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.width=20, fig.height=15}
 for (i in unique(top_x$cluster)) {
   top_x_cluster <- top_x |>
     filter(cluster == i)
@@ -279,7 +284,7 @@ for (i in unique(top_x$cluster)) {
     seu_singlet_myelo,
     as.vector(top_x_cluster$gene),
     pt.size = 1,
-    label = TRUE,
+    label = FALSE,
     reduction = "wnn.umap"
   ) + patchwork::plot_annotation(
     title = paste0("Top genes in Cluster ", i),
@@ -330,7 +335,7 @@ images <- map(
     seu_singlet_myelo,
     features = .x,
     pt.size = 1,
-    label = TRUE,
+    label = FALSE,
     reduction = "wnn.umap"
   ) & mycolor2 & NoAxes()
 )
@@ -341,21 +346,6 @@ plot1 <- stacked_images + patchwork::plot_annotation(
   theme = theme(plot.title = element_text(size = 25))
 )
 print(plot1)
-
-# density w przypadku AUCell scores nie ma sensu, bo mocno przejaskrawia
-# map(
-#   names(wang2024_hypoxic_macrophages),
-#   ~ plot_density(
-#     seu_singlet_myelo,
-#     .x,
-#     size = 1.5,
-#     # joint = "TRUE",
-#     reduction = "wnn.umap"
-#   ) & NoAxes()
-# )
-
-# ale spróbujmy density w przypadku samych genów, nie scora
-# clean wang2024 list, bc some features are not present in my data, and density_plot need all to be present
 ```
 
 #### Density Plot of genes
@@ -382,7 +372,7 @@ imap( # indexed map
 
 ### Greenwald2024_Spatial transcriptomics
 #### FeaturePlot of AUCell scores
-```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=20, fig.height=25}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10, fig.height=12}
 print(greenwald2024)
 
 auc_scores <- AUCell_calcAUC(
@@ -399,7 +389,7 @@ images <- map(
     seu_singlet_myelo,
     features = .x,
     pt.size = 1,
-    label = TRUE,
+    label = FALSE,
     reduction = "wnn.umap"
   ) & mycolor2 & NoAxes()
 )
@@ -413,7 +403,7 @@ print(plot1)
 ```
 
 ### Beck2021 pHGG metapropgrams
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=13, fig.height=14}
 print(liu2022)
 
 auc_scores <- AUCell_calcAUC(
@@ -430,7 +420,7 @@ images <- map(
     seu_singlet_myelo,
     features = .x,
     pt.size = 1,
-    label = TRUE,
+    label = FALSE,
     reduction = "wnn.umap"
   ) & mycolor2 & NoAxes()
 )
@@ -446,7 +436,7 @@ print(plot1)
 
 
 ### VlnPlot of AUC scores of microglia/macrophages core markers
-```{r, fig.width=15, fig.height=12}
+```{r, fig.width=10, fig.height=7}
 # Idents(seu_singlet_myelo) <- "merged_to_one"
 
 mgmc <- list(
@@ -478,7 +468,7 @@ VlnPlot(
 ```
 
 ### VlnPlot of expression of individual genes of microglia/macropahges core markers
-```{r, fig.width=18, fig.height=14}
+```{r, fig.width=10, fig.height=12}
 imap(
   mgmc,
   ~ VlnPlot(
@@ -493,7 +483,7 @@ imap(
 
 
 ### FeaturePlot of AUC scores of microglia/macrophages core markers
-```{r, fig.width=12, fig.height=6}
+```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
 FeaturePlot(
   seu_singlet_myelo,
   features = c(
@@ -502,13 +492,13 @@ FeaturePlot(
     "macrophages1"
   ),
   pt.size = 1,
-  label = TRUE,
+  label = FALSE,
   reduction = "wnn.umap"
 ) & mycolor2 & NoAxes()
 ```
 
 ### DensityPlot of microglia/macrophages genes
-```{r, fig.width=20, fig.height=20}
+```{r, echo=FALSE, message=FALSE, fig.width=20, fig.height=20}
 imap( # indexed map
   mgmc,
   ~ plot_density(
@@ -525,7 +515,7 @@ imap( # indexed map
 ```
 
 ### Heatmap z-score of microglia/macrophages core markers
-```{r, fig.width=10, fig.height=7}
+```{r, echo=FALSE, message=FALSE, fig.width=8, fig.height=7}
 features <- c(mgmc$microglia1, mgmc$microglia2, mgmc$macrophages1)
 
 seu_singlet_myelo_heatmap <- seu_singlet_myelo
@@ -543,7 +533,7 @@ DoHeatmap(
 ```
 
 ### FeaturePlot of microglia/macrophages selected core markers
-```{r, fig.width=7, fig.height=6}
+```{r, echo=FALSE, message=FALSE, fig.width=7, fig.height=6}
 core_list <- list(
   mg_core = c("P2RY12", "TMEM119", "CX3CR1"),
   mac_core <- c("CD163", "TGFBI", "CD68", "AIF1")
@@ -556,13 +546,13 @@ map(
     features = .x,
     reduction = "wnn.umap",
     pt.size = 1,
-    label = TRUE
+    label = FALSE
   ) & mycolor2 & NoAxes()
 )
 ```
 
 ### DensityPlot of microglia/macrophages selected core markers
-```{r}
+```{r, echo=FALSE, message=FALSE}
 map(
   core_list,
   ~ plot_density(
@@ -613,8 +603,6 @@ for (i in seq_along(f_list)) {
     width = 20
   )
 }
-?plot_density
-
 DefaultAssay(seu_singlet_myelo) <- "RNA"
 ```
 
@@ -633,148 +621,306 @@ knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-
 knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_myelo/panel_density_2.png") # nolint
 ```
 
-# GSVA of HALLMARK collection
-made on seurat_subset (randomly selected 100 cells from each cluster, the same as for previous analysis)
-```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=15}
-gene_sets <- msigdbr(species = "Homo sapiens", category = "H")
-gene_set_list <- split(gene_sets$gene_symbol, gene_sets$gs_name) # wooolooloo
-
-expr_matrix <- as.matrix(
-  GetAssayData(
-    seurat_subset,
-    layer = "data", assay = "RNA"
-  )
+# Pathway analysis
+## GSVA (GSVA using gsva package)
+The GSVA package provides an implementation of this approach for the following methods:
+* gsva (Hänzelmann, Castelo, and Guinney 2013). This is the default method of the package and similarly to ssGSEA, is a non-parametric method that uses the empirical CDFs of gene expression ranks inside and outside the gene set, but it starts by calculating an expression-level statistic that brings gene expression profiles with different dynamic ranges to a common scale.
+### GSVA msigdb Hallmark collection = 0 DE pathways
+```{r, eval=FALSE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_myelo,
+  category = "H",
+  gsva_type = "gsva"
 )
-
-params <- zscoreParam(
-  expr_matrix,
-  gene_set_list,
-  minSize = 10,
-  maxSize = 500
-)
-
-gsva_es <- gsva(
-  params,
-  verbose = TRUE
-)
-
-gsva_cx <- "GSVA_H"
-
-# seu_singlet_myelo[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
-seurat_subset[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
-
-# DefaultAssay(seu_singlet_myelo) <- gsva_Cx
-DefaultAssay(seurat_subset) <- gsva_cx
-
-# avg_pathway_scores <- AverageExpression(seu_singlet_myelo, assays = gsva_Cx)$GSVA
-avg_pathway_scores <- AverageExpression(seurat_subset, assays = gsva_cx)$GSVA
-
-markers <- Seurat::FindAllMarkers(
-  # seu_singlet_myelo,
-  seurat_subset,
-  assay = gsva_cx,
-  test_use = "MAST",
-  only.pos = TRUE
-) |>
-  filter(p_val_adj < 0.05) |>
-  group_by(cluster) |>
-  top_n(n = 20, wt = avg_log2FC)
-
-# markers_sort <- markers |>
-#   filter(cluster == "3") |>
-#   arrange(desc(avg_log2FC))
-# select(gene)
-
-ggplot(
-  markers,
-  aes(x = gene, y = cluster, size = avg_log2FC, color = p_val_adj)
-) +
-  geom_point(aes(fill = p_val_adj < 0.05)) +
-  scale_size_continuous(range = c(1, 10)) +
-  scale_color_gradient(low = "black", high = "lightgray") +
-  coord_flip() +
-  labs() +
-  theme_minimal() +
-  theme(
-    axis.text = element_text(size = 11),
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    panel.grid.major = element_line(size = 0.5, color = "grey80")
-  )
+# as it is 0 pathways here, code for calculating and  plotting is removed
 ```
 
-# GSVA of C2 (currated gene-sets) collection
-made on seurat_subset (randomly selected 100 cells from each cluster, the same as for previous analysis)
-```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=15}
-gene_sets <- msigdbr(species = "Homo sapiens", category = "C2")
-gene_set_list <- split(gene_sets$gene_symbol, gene_sets$gs_name) # wooolooloo
-
-expr_matrix <- as.matrix(
-  GetAssayData(
-    seurat_subset,
-    layer = "data", assay = "RNA"
-  )
+### GSVA msgidb C2 collection
+```{r, eval=FALSE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_myelo,
+  category = "C2",
+  gsva_type = "gsva"
 )
 
-params <- zscoreParam(
-  expr_matrix,
-  gene_set_list,
-  minSize = 10,
-  maxSize = 500
-)
+saveRDS(gsva_es, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/21-Feb-25_gsva_es_myelo_C2.rds") # nolint
+```
 
-gsva_es <- gsva(
-  params,
-  verbose = TRUE
-)
+```{r, echo=FALSE, warning=FALSE}
+# as gsva for C2 takes time, save and load .rds with gsva calculated
+gsva_es <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/21-Feb-25_gsva_es_myelo_C2.rds") # nolint
 
 gsva_cx <- "GSVA_C2"
+seu_singlet_myelo[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_myelo) <- gsva_cx
+```
 
-# seu_singlet_myelo[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
-seurat_subset[[gsva_cx]] <- CreateAssayObject(data = gsva_es)
-
-# DefaultAssay(seu_singlet_myelo) <- gsva_Cx
-DefaultAssay(seurat_subset) <- gsva_cx
-
-# avg_pathway_scores <- AverageExpression(seu_singlet_myelo, assays = gsva_Cx)$GSVA
-avg_pathway_scores <- AverageExpression(seurat_subset, assays = gsva_cx)$GSVA
-
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
 markers <- Seurat::FindAllMarkers(
-  # seu_singlet_myelo,
-  seurat_subset,
-  assay = gsva_cx,
-  test_use = "MAST",
-  only.pos = TRUE
-) |>
+  seu_singlet_myelo,
+  assay = "GSVA_C2",
+  only.pos = FALSE
+)
+markers_up <- markers |>
   filter(p_val_adj < 0.05) |>
   group_by(cluster) |>
-  top_n(n = 5, wt = avg_log2FC)
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
 
-# markers_sort <- markers |>
-#   filter(cluster == "3") |>
-#   arrange(desc(avg_log2FC))
-# select(gene)
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+datatable(top_markers)
 
-ggplot(
-  markers,
-  aes(x = gene, y = cluster, size = avg_log2FC, color = p_val_adj)
-) +
-  geom_point(aes(fill = p_val_adj < 0.05)) +
-  scale_size_continuous(range = c(1, 10)) +
-  scale_color_gradient(low = "black", high = "lightgray") +
-  coord_flip() +
-  labs() +
-  theme_minimal() +
-  theme(
-    axis.text = element_text(size = 11),
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    panel.grid.major = element_line(size = 0.5, color = "grey80")
-  )
+seu_gsva_print_plot(
+  top_markers,
+  "GSVA top 40(20up+20down) DE (wilcox) C2 pathways in Cluster "
+)
+```
+
+## zscore method (using gsva package)
+### zscore msigdb Hallmark collection
+```{r, eval=FALSE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_myelo,
+  category = "H",
+  gsva_type = "zscore"
+)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+# as gsva for C2 takes time, save and load .rds with gsva calculated
+gsva_cx <- "GSVA_H_zscore"
+seu_singlet_myelo[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_myelo) <- gsva_cx
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_myelo,
+  assay = gsva_cx,
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "zscoreGSVA top 40(20up+20down) DE (wilcox) Hallmark pathways in Cluster "
+)
+```
+
+### zscore msigdb C2 collection
+```{r, eval=TRUE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_myelo,
+  category = "C2",
+  gsva_type = "zscore"
+)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+gsva_cx <- "GSVA_C2_zscore"
+seu_singlet_myelo[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_myelo) <- gsva_cx
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE, message=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_myelo,
+  assay = gsva_cx,
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "zscoreGSVA top 40(20up+20down) DE (wilcox) Hallmark pathways in Cluster "
+)
+```
+
+## PLAGE (using GSVA package)
+*plage (Tomfohr, Lu, and Kepler 2005). Pathway level analysis of gene expression (PLAGE) standardizes expression profiles over the samples and then, for each gene set, it performs a singular value decomposition (SVD) over its genes. The coefficients of the first right-singular vector are returned as the estimates of pathway activity over the samples. Note that, because of how SVD is calculated, the sign of its singular vectors is arbitrary.
+
+## PLAGE msigdb Hallmark 
+```{r, eval=TRUE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_myelo,
+  category = "H",
+  gsva_type = "plage"
+)
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+# as gsva for C2 takes time, save and load .rds with gsva calculated
+gsva_cx <- "GSVA_H_plage"
+seu_singlet_myelo[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_myelo) <- gsva_cx
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_myelo,
+  assay = gsva_cx,
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, eval=TRUE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "plageGSVA top 40(20up+20down) DE (wilcox) Hallmark pathways in Cluster "
+)
+```
+
+## PLAGE msigdb C2
+```{r, eval=FALSE, message=FALSE, echo=FALSE, warning=FALSE}
+gsva_es <- seu_gsva(
+  seu_singlet_myelo,
+  category = "C2",
+  gsva_type = "plage"
+)
+
+# this one also takes a lot of time. save and load the results.
+saveRDS(gsva_es, "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/21-Feb-25_gsva_es_myelo_C2_plage.rds") # nolint
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+# as gsva for C2 takes time, save and load .rds with gsva calculated
+gsva_es <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/21-Feb-25_gsva_es_myelo_C2_plage.rds") # nolint
+
+gsva_cx <- "GSVA_C2_plage"
+seu_singlet_myelo[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
+Seurat::DefaultAssay(seu_singlet_myelo) <- gsva_cx
+```
+
+```{r, eval=TRUE, echo=FALSE, warning=FALSE}
+markers <- Seurat::FindAllMarkers(
+  seu_singlet_myelo,
+  assay = gsva_cx,
+  only.pos = FALSE
+)
+markers_up <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = 20, wt = avg_log2FC)
+markers_down <- markers |>
+  filter(p_val_adj < 0.05) |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC)) |>
+  top_n(n = -20, wt = avg_log2FC)
+top_markers <- bind_rows(markers_up, markers_down) |>
+  mutate(upordown = ifelse(avg_log2FC > 0, "up", "down"))
+```
+
+```{r, eval=TRUE, fig.width=15, fig.height=8}
+datatable(top_markers)
+
+seu_gsva_print_plot(
+  top_markers,
+  "plageGSVA top 40(20up+20down) DE (wilcox) C2 gene sets in Cluster "
+)
+```
+
+# GSEA (using fgsea package)
+```{r}
+DefaultAssay(seu_singlet_myelo) <- "RNA"
+gsea_markers <- FindAllMarkers(
+  seu_singlet_myelo,
+  only.pos = FALSE,
+  logfc.threshold = 0,
+  min.pct = 0
+)
+head(gsea_markers)
+```
+
+## Hallmark 
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+for (i in unique(gsea_markers$cluster)) {
+  cluster_markers <- gsea_markers |>
+    filter(p_val_adj < 0.05) |>
+    filter(cluster == i) |>
+    mutate(myscore = sign(avg_log2FC) * abs(avg_log2FC) * -log10(p_val_adj))
+
+  ranked_genes <- cluster_markers$myscore
+  names(ranked_genes) <- cluster_markers$gene
+  ranked_genes <- sort(ranked_genes, decreasing = TRUE)
+  ranked_genes <- ranked_genes[is.finite(ranked_genes)]
+
+  top_pathways <- seu_gsea(ranked_genes, "H")
+  seu_gsea_plot(top_pathways, "H", i)
+}
+```
+
+## C2
+```{r, message=FALSE, warning=FALSE, fig.width=15, fig.height=8}
+for (i in unique(gsea_markers$cluster)) {
+  cluster_markers <- gsea_markers |>
+    filter(p_val_adj < 0.05) |>
+    filter(cluster == i) |>
+    mutate(myscore = sign(avg_log2FC) * abs(avg_log2FC) * -log10(p_val_adj))
+
+  ranked_genes <- cluster_markers$myscore
+  names(ranked_genes) <- cluster_markers$gene
+  ranked_genes <- sort(ranked_genes, decreasing = TRUE)
+  ranked_genes <- ranked_genes[is.finite(ranked_genes)]
+
+  top_pathways <- seu_gsea(ranked_genes, "C2")
+  seu_gsea_plot(top_pathways, "C2", i)
+}
 ```
 
 # Trajectory analysis with Monocle3
-here one need to select starting point, as I don't want to do that everytime Rmd is knitted, all those cells will not be evaluated, but only prepared .png will be loaded.
-
-## Run analysis
 ```{r, eval=FALSE, echo=FALSE}
 ## Convert SingleCellExperiment object to CellDataSet
 cds <- SeuratWrappers::as.cell_data_set(seu_singlet_myelo)
@@ -810,7 +956,6 @@ plot <- plot_cells(cds,
 ggsave("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-2025_seu_myelo_mococle3.png", plot)
 ```
 
-## Load .png with final result
 ```{r, echo=FALSE, fig.cap="Monocle3 result",}
 knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-2025_seu_myelo_mococle3.png") # nolint
 ```
@@ -820,10 +965,62 @@ knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-
 
 ```
 
-# Ligand-Receptor analysis
-```{r}
+# Ligand-Receptor analysis /myeloid only/ (cellchat)
+```{r, eval=FALSE}
+data.input <- seu_singlet_myelo[["RNA"]]$data
+labels <- Idents(seu_singlet_myelo)
+meta <- data.frame(labels = labels, row.names = names(labels)) # create a dataframe of the cell labels
 
+library(CellChat)
+options(stringsAsFactors = FALSE)
+
+cellchat <- createCellChat(
+  object = seu_singlet_myelo,
+  group.by = "ident", assay = "RNA"
+)
+CellChatDB <- CellChatDB.human
+cellchat@DB <- CellChatDB
+
+# subset the expression data of signaling genes for saving computation cost
+cellchat <- subsetData(cellchat) # This step is necessary even if using the whole database
+future::plan("multisession", workers = 24) # do parallel
+cellchat <- identifyOverExpressedGenes(cellchat)
+cellchat <- identifyOverExpressedInteractions(cellchat)
+
+cellchat <- computeCommunProb(cellchat, type = "triMean")
+
+cellchat <- computeCommunProbPathway(cellchat)
+
+cellchat <- aggregateNet(cellchat)
+
+
+groupSize <- as.numeric(table(cellchat@idents))
+par(mfrow = c(1, 2), xpd = TRUE)
+netVisual_circle(
+  cellchat@net$count,
+  vertex.weight = groupSize,
+  weight.scale = T,
+  label.edge = F,
+  title.name = "Number of interactions"
+)
+
+netVisual_circle(
+  cellchat@net$weight,
+  vertex.weight = groupSize,
+  weight.scale = T,
+  label.edge = F,
+  title.name = "Interaction weights/strength"
+)
+
+mat <- cellchat@net$weight
+par(mfrow = c(3, 4), xpd = TRUE)
+for (i in 1:nrow(mat)) {
+  mat2 <- matrix(0, nrow = nrow(mat), ncol = ncol(mat), dimnames = dimnames(mat))
+  mat2[i, ] <- mat[i, ]
+  netVisual_circle(mat2, vertex.weight = groupSize, weight.scale = T, edge.weight.max = max(mat), title.name = rownames(mat)[i])
+}
 ```
+
 
 
 

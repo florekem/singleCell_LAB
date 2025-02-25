@@ -1,0 +1,449 @@
+---
+title: "HIT-GLIO sample1 lymphoid clusters annotation"
+author: "MF"
+date: "`r Sys.Date()`"
+# output: powerpoint_presentation
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+      number_sections: true
+---
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(ggplot2)
+  library(Matrix)
+  library(tidyverse)
+  library(clustree)
+  library(reticulate) # load packages required by leiden algo
+  reticulate::use_condaenv("/mnt/sda4/conda/envs/R")
+  library(viridis) # colors
+  options(future.globals.maxSize = 3.0 * 1e9) # 3GB
+  library(dittoSeq)
+  library(AUCell)
+  library(GSVA)
+  library(msigdbr)
+  library(Nebulosa)
+  library(monocle3)
+  library(SeuratExtend)
+  library(Azimuth)
+  library(SeuratDisk)
+  library(SeuratData)
+  library(ProjecTILs)
+  library(scRepertoire)
+  library(escape)
+})
+```
+
+
+```{r}
+# seu_singlet_myelo <- readRDS("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/07-Feb-2025_seu_singlet_myelo.rds") # nolint
+
+seu_singlet_lympho_wo_dub <- readRDS(
+  "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/RDS/18-Fen-2025-sue_singlet_lymho_wo_dub.rds" # nolint
+)
+
+group_by <- "wsnn_res.0.9"
+
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/functions.R")
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/00_Global_vars.R")
+source("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/cell_features.R")
+
+set.seed(123)
+```
+
+# Annotate Clusters:
+```{r, echo=FALSE}
+nclusters <- length(unique(seu_singlet_lympho_wo_dub@meta.data$wsnn_res.0.9))
+myelo_cluster_annotation <- rep("unannotated", nclusters)
+names(myelo_cluster_annotation) <- levels(
+  seu_singlet_lympho_wo_dub@meta.data$wsnn_res.0.9
+)
+
+myelo_cluster_annotation["1"] <- "[C1]"
+myelo_cluster_annotation["2"] <- "[C2]"
+myelo_cluster_annotation["3"] <- "[C1]"
+myelo_cluster_annotation["4"] <- "[C3]"
+myelo_cluster_annotation["5"] <- "[C4]"
+myelo_cluster_annotation["6"] <- "[C5]"
+myelo_cluster_annotation["7"] <- "[C6]"
+myelo_cluster_annotation["8"] <- "[C7]"
+myelo_cluster_annotation["9"] <- "[C8]"
+myelo_cluster_annotation["10"] <- "[C8]"
+myelo_cluster_annotation["11"] <- "[C9]"
+myelo_cluster_annotation["12"] <- "[C10]" # nolint
+myelo_cluster_annotation["13"] <- "[C11]"
+myelo_cluster_annotation["14"] <- "[C12]"
+myelo_cluster_annotation["15"] <- "[C13]"
+myelo_cluster_annotation["16"] <- "[C14]"
+
+seu_singlet_lympho_wo_dub <- SetIdent(
+  seu_singlet_lympho_wo_dub,
+  value = seu_singlet_lympho_wo_dub@meta.data$wsnn_res.0.9
+)
+seu_singlet_lympho_wo_dub <- RenameIdents(seu_singlet_lympho_wo_dub, myelo_cluster_annotation)
+seu_singlet_lympho_wo_dub@meta.data$manual_anno <- Idents(seu_singlet_lympho_wo_dub)
+```
+
+# Dimplot of subsetted lymphoid clusters
+```{r}
+SeuratExtend::DimPlot2(
+  seu_singlet_lympho_wo_dub,
+  reduction = "wnn.umap",
+  label = TRUE,
+  label.color = "black",
+  index.title = "C",
+  pt.size = 1.3,
+  repel = TRUE,
+  box = TRUE,
+  theme = NoAxes()
+) + theme_umap_arrows()
+
+DimPlot2(
+  seu_singlet_lympho_wo_dub,
+  group.by = "MULTI_ID",
+  reduction = "wnn.umap",
+  label = TRUE,
+  pt.size = 1.3,
+  theme = NoAxes()
+) + theme_umap_arrows()
+```
+
+# CellTypist to predict labels
+https://www.celltypist.org/
+prediction is based on Immune_ALL_high reference
+# export raw count matrix as .csv file
+```{r, eval=FALSE}
+matrix <- GetAssayData(seu_singlet_lympho, assay = "RNA", layer = "counts") |>
+  as.matrix()
+
+head(matrix)
+write.csv(matrix, "lympho_matrix_for_cell_typist.csv")
+```
+```{r}
+# annot <- read.csv("/mnt/sda4/cell_typist_predicted_labels_lympho_high.csv")
+# colnames(annot)
+# rownames(annot) <- annot$cell
+
+# seu_singlet_lympho_wo_dub <- AddMetaData(
+#   seu_singlet_lympho_wo_dub,
+#   metadata = annot
+# )
+
+# DimPlot2(
+#   seu_singlet_lympho_wo_dub,
+#   reduction = "wnn.umap",
+#   group.by = "predicted_labels",
+#   label = TRUE,
+#   repel = TRUE
+# )
+```
+
+# Azimuth to predict labels
+```{r}
+DefaultAssay(seu_singlet_lympho_wo_dub) <- "RNA"
+
+seu_singlet_azi <- RunAzimuth(
+  seu_singlet_lympho_wo_dub,
+  query.modality = "RNA",
+  reference = "pbmcref"
+)
+
+Idents(seu_singlet_azi) <- "predicted.celltype.l2"
+
+SeuratExtend::DimPlot2(
+  seu_singlet_azi,
+  reduction = "wnn.umap",
+  group.by = c("predicted.celltype.l2"),
+  label = TRUE,
+  label.color = "black",
+  # index.title = "C",
+  repel = TRUE,
+  box = TRUE,
+  theme = NoAxes()
+) + theme_umap_arrows()
+
+
+cell_types <- unique(seu_singlet_azi$predicted.celltype.l2)
+
+for (i in cell_types) {
+  seu_singlet_azi$custom_color <- ifelse(
+    seu_singlet_azi$predicted.celltype.l2 == i,
+    i,
+    "Other"
+  )
+  print(DimPlot(
+    seu_singlet_azi,
+    reduction = "wnn.umap",
+    group.by = "custom_color",
+    cols = c("red", "gray")
+  ))
+}
+```
+
+# Plot ADT features
+```{r, eval=FALSE, echo=FALSE}
+DefaultAssay(seu_singlet_lympho_wo_dub) <- "ADT.dsb.threshold"
+features <- get_features(seu_singlet_lympho_wo_dub, "ADT.dsb.threshold")
+length(features)
+f1 <- features[1:10]
+f2 <- features[11:21]
+f_list <- list(f1, f2)
+
+for (i in seq_along(f_list)) {
+  seu_FeaturePlot(
+    seu_singlet_lympho_wo_dub, "ADT.dsb.threshold",
+    reduction = "wnn.umap",
+    color = inferno,
+    features = f_list[[i]],
+    max.cutoff = NA,
+    show = FALSE,
+    save_path = paste0("singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_lympho/panel_", i), # nolint
+    ggheight = 20,
+    ggwidth = 20
+  ) & NoAxes()
+}
+
+for (i in seq_along(f_list)) {
+  plot <- plot_density(
+    seu_singlet_lympho_wo_dub,
+    features = f_list[[i]],
+    reduction = "wnn.umap",
+    size = 1.5,
+  ) & NoAxes() & inferno
+
+  ggsave(
+    paste0("singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_lympho/panel_density_", i, ".png"),
+    plot,
+    height = 20,
+    width = 20
+  )
+}
+DefaultAssay(seu_singlet_lympho_wo_dub) <- "RNA"
+```
+
+## load adt features graphs
+### feature plot
+```{r, echo=FALSE, fig.cap="ADT filtered features",}
+knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_lympho/panel_1.png") # nolint
+
+knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_lympho/panel_2.png") # nolint
+```
+
+### density plot
+```{r, echo=FALSE, fig.cap="ADT filtered features, density plot",}
+knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_lympho/panel_density_1.png") # nolint
+
+knitr::include_graphics("/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/plots/10-feb-25_sct_dsb-threshold_lympho/panel_density_2.png") # nolint
+```
+
+# Cycling cells
+```{r}
+colnames(seu_singlet_lympho@meta.data)
+
+FeaturePlot(
+  seu_singlet_lympho_wo_dub,
+  features = "G2M.Score",
+  reduction = "wnn.umap",
+  pt.size = 1.3
+)
+```
+
+## subset even number of cells
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+table(seu_singlet_lympho_wo_dub@active.ident)
+omg
+subset_cells_all <- unlist(subset_cells)
+
+# Subset the Seurat object
+seurat_subset <- subset(seu_singlet_lympho_wo_dub, cells = subset_cells_all)
+seurat_subset
+
+seurat_subset <- NormalizeData(seurat_subset)
+seurat_subset <- ScaleData(seurat_subset)
+
+table(seurat_subset@active.ident)
+```
+
+## Compute differentiall expression
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+markers_genes <- FindAllMarkers(
+  seurat_subset,
+  log2FC.threshold = 0.2,
+  # test.use = "MAST",
+  min.pct = 0.1,
+  min.diff.pct = 0.2,
+  only.pos = TRUE,
+  # max.cells.per.ident = 50, this subsamples randomly every time, better to subsample on your own. # nolint
+  assay = "RNA"
+)
+```
+
+## draw barlopts with top25
+```{r}
+top25 <- markers_genes %>%
+  group_by(cluster) %>%
+  filter(p_val_adj < 0.05) |>
+  top_n(-25, p_val_adj)
+```
+
+```{r}
+for (i in unique(top25$cluster)) {
+  # print genes protted on barplots (top25 genes in each cluster)
+  omg <- top25 |>
+    filter(cluster == i)
+  print(omg$gene)
+
+  barplot(
+    sort(setNames(top25$avg_log2FC, top25$gene)[top25$cluster == i], FALSE),
+    horiz = TRUE,
+    las = 1,
+    main = paste0(i, " vs. rest"),
+    border = "white",
+    yaxs = "i"
+  )
+  abline(v = c(0, 0.25), lty = c(1, 2))
+}
+```
+
+## make heatmap with top 10 genes
+```{r, echo=FALSE, warning=FALSE, error=FALSE, fig.width=10, fig.height=17}
+top_x <- markers_genes %>%
+  group_by(cluster) %>%
+  slice_min(p_val_adj, n = 10, with_ties = FALSE)
+
+seurat_subset_heatmap <- seurat_subset
+
+seurat_subset_heatmap <- ScaleData(
+  seurat_subset_heatmap,
+  features = as.character(unique(top_x$gene)), assay = "RNA"
+)
+
+DoHeatmap(
+  seurat_subset_heatmap,
+  features = as.character(unique(top_x$gene)),
+  # group.by = "cluster.sct.myelo", assay = "RNA"
+  group.by = "ident", assay = "RNA"
+)
+```
+
+## make dotplot with top 10 (same viz. as heatmap)
+```{r, fig.width=10, fig.height=15}
+DotPlot(
+  seurat_subset_heatmap,
+  features = rev(as.character(unique(top_x$gene))),
+  group.by = "manual_anno",
+  assay = "RNA"
+) + coord_flip() + mycolor2 + theme(
+  axis.text.x = element_text(angle = 90, hjust = 1)
+)
+```
+
+## validate top10 gene expression on vlnplots
+```{r, echo=FALSE, fig.width=8, fig.height=15}
+for (i in unique(top_x$cluster)) {
+  top_x_cluster <- top_x |>
+    filter(cluster == i)
+
+  print(paste0("cluster: ", i))
+
+  print(VlnPlot(
+    seu_singlet_lympho_wo_dub,
+    features = top_x_cluster$gene,
+    ncol = 3
+  ) + patchwork::plot_annotation(
+    paste0("Cluster ", i, " top genes"),
+    theme = theme(plot.title = element_text(size = 25))
+  ))
+}
+
+?VlnPlot
+```
+
+# ProjecTILs Globally (tumor + csf)
+```{r, eval=FALSE}
+tcr_sample <- read_csv("/mnt/sdb1/runs/sample1_multilane_spec_index_NNN/outs/per_sample_outs/sample1/vdj_t/filtered_contig_annotations.csv") # nolint
+```
+
+## CD4
+```{r}
+tcr_sample_list <- list(tcr_sample)
+
+combined_tcr <- combineTCR(
+  tcr_sample_list,
+  removeNA = FALSE,
+  removeMulti = FALSE,
+  filterMulti = FALSE
+)
+
+seu_singlet_lympho_wo_dub <- combineExpression(
+  combined_tcr,
+  seu_singlet_lympho_wo_dub,
+  cloneCall = "gene",
+  proportion = TRUE
+)
+
+# CD4
+ref_cd4 <- load.reference.map(
+  "/mnt/sda4/singleCell_LAB/scREP_projectTIL_tut/data/refs/pTILs_hsa_cd4t.rds"
+)
+
+seu_tcr4 <- Run.ProjecTILs(
+  seu_singlet_lympho_wo_dub,
+  ref = ref_cd4,
+  ncores = 1
+)
+```
+## Plot projections
+```{r, eval=FALSE}
+p1 <- plot.projection(ref_cd4) + theme(aspect.ratio = 1)
+p2 <- plot.projection(
+  ref_cd4, seu_tcr4,
+  linesize = 0.3, pointsize = 0.5
+) + theme(aspect.ratio = 1)
+p1 | p2
+
+ggsave("plots/seu_csf_tcr4.png", p1 | p2)
+
+p3 <- plot.statepred.composition(ref_cd4, seu_tcr4, metric = "Percent")
+p3 + theme(
+  legend.text = element_text(size = 15),
+  plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+  axis.title.x = element_text(size = 16),
+  axis.title.y = element_text(size = 16),
+  axis.text.y = element_text(size = 14)
+) + labs(
+  title = "CD4 global",
+  x = "Cell state",
+  y = "Percentage of cells"
+) + scale_y_continuous(limits = c(0, 60))
+```
+
+## DimPlot of pTILs predictions on main umap
+```{r}
+cd4_metadata <- seu_tcr4@meta.data$functional.cluster
+names(cd4_metadata) <- colnames(seu_tcr4)
+
+seu_singlet_lympho_wo_dub <- AddMetaData(
+  seu_singlet_lympho_wo_dub,
+  cd4_metadata,
+  col.name = "pr.TILs.cd4_annotation"
+)
+
+SeuratExtend::DimPlot2(
+  seu_singlet_lympho_wo_dub,
+  reduction = "wnn.umap",
+  group.by = "pr.TILs.cd4_annotation",
+  # label = TRUE,
+  label.color = "black",
+  # index.title = "C",
+  repel = TRUE,
+  box = TRUE,
+  theme = NoAxes()
+) + theme_umap_arrows()
+```

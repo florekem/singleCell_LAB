@@ -20,7 +20,8 @@ dim(test1)
 sample_annotation <- seu_singlet@meta.data |>
   rownames_to_column("cells") |>
   as_tibble() |>
-  select(cells, cluster.totalvi)
+  # select(cells, cluster.totalvi)
+  select(cells, wsnn_res.0.4)
 
 write.table(sample_annotation, file = "sample_annotation.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
 
@@ -47,12 +48,12 @@ infercnv_obj <- CreateInfercnvObject(
 infercnv_obj <- infercnv::run(
   infercnv_obj,
   cutoff = 0.1, # may be 0 in case if filtering done in Seurat
-  out_dir = "inferCNV_output", # dir is auto-created for storing outputs
+  out_dir = "inferCNV_output_wsnn04", # dir is auto-created for storing outputs
   cluster_by_groups = T, # spr. jak wyjdzie na F
   denoise = T,
   HMM = T,
   # leiden_resolution = 0.01,
-  num_threads = 32
+  num_threads = 40
 )
 
 ?infercnv::run

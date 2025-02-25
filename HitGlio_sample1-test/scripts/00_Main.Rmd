@@ -15,6 +15,18 @@ rmarkdown::render(
 )
 ```
 
+```{r}
+rmarkdown::render(
+  "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/03_Create_vizuals_tumor.Rmd" # nolint
+)
+```
+
+```{r}
+rmarkdown::render(
+  "/mnt/sda4/singleCell_LAB/HitGlio_sample1-test/scripts/04_Create_vizuals_lympho.Rmd" # nolint
+)
+```
+
 
 ```{r child = '01_Create_seurat_object.Rmd'}
 ```

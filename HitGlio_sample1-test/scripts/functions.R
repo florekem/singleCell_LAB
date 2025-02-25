@@ -1,6 +1,4 @@
 mycolor2 <- viridis::scale_color_viridis(option = "viridis")
-?scale_color_viridis
-
 # Create sparce matricies
 seu_create_sparse_matrix_list <- function(sample_path) {
   sparse_matrix <- Seurat::Read10X(data.dir = sample_path)
@@ -330,4 +328,143 @@ get_features <- function(seu, assay) {
   features <- Features(seu)
 
   return(features)
+}
+
+seu_gsva <- function(seurat_object, category, gsva_type) {
+  gene_sets <- msigdbr::msigdbr(
+    species = "Homo sapiens",
+    category = category
+  )
+  gene_set_list <- split(gene_sets$gene_symbol, gene_sets$gs_name)
+  expr_matrix <- as.matrix(
+    Seurat::GetAssayData(
+      seurat_object,
+      layer = "data", assay = "RNA"
+    )
+  )
+
+  if (gsva_type == "gsva") {
+    params <- GSVA::gsvaParam(
+      expr_matrix,
+      gene_set_list,
+      minSize = 5,
+      maxSize = 500
+    )
+  } else if (gsva_type == "zscore") {
+    params <- GSVA::zscoreParam(
+      expr_matrix,
+      gene_set_list,
+      minSize = 5,
+      maxSize = 500
+    )
+  } else if (gsva_type == "plage") {
+    params <- GSVA::plageParam(
+      expr_matrix,
+      gene_set_list,
+      minSize = 5,
+      maxSize = 500
+    )
+  }
+
+  gsva_es <- GSVA::gsva(
+    params,
+    verbose = FALSE
+  )
+
+  return(gsva_es)
+}
+
+seu_gsva_print_plot <- function(top_markers, title) {
+  for (i in unique(top_markers$cluster)) {
+    top_cluster <- top_markers |>
+      filter(cluster == i) |>
+      arrange(desc(avg_log2FC))
+
+    print(
+      ggplot2::ggplot(
+        top_cluster, aes(x = gene, cluster, y = avg_log2FC, fill = upordown)
+      ) +
+        geom_bar(stat = "identity", width = 0.4) +
+        coord_flip() +
+        theme_minimal() +
+        scale_fill_manual(values = c("#555598", "#bf605b")) +
+        theme(
+          axis.text = element_text(size = 11)
+        ) +
+        patchwork::plot_annotation(
+          title = paste0(title, i),
+          theme = theme(plot.title = element_text(size = 25))
+        )
+    )
+  }
+}
+
+seu_gsea <- function(ranked_genes, category) {
+  gene_sets <- msigdbr::msigdbr(
+    species = "Homo sapiens",
+    category = category
+  )
+  gene_set_list <- split(gene_sets$gene_symbol, gene_sets$gs_name)
+
+  fgsea_results <- fgsea(
+    pathways = gene_set_list,
+    stats = ranked_genes,
+    minSize = 5, maxSize = 500
+  )
+
+  top_pathways <- fgsea_results %>%
+    filter(padj < 0.05) |>
+    arrange(desc(NES)) |>
+    slice_head(n = 20) |> # Top 20 positive
+    bind_rows(
+      fgsea_results |>
+        filter(padj < 0.05) |>
+        arrange(NES) |>
+        slice_head(n = 20)
+    )
+
+  return(top_pathways)
+}
+
+seu_gsea_plot <- function(top_pathways, category, cluster) {
+  plot1 <- ggplot(top_pathways, aes(reorder(pathway, NES), NES, fill = padj < 0.05)) +
+    geom_col() +
+    coord_flip() +
+    labs(x = "Pathway", y = "NES", title = paste0("GSEA Top 40(20up+20down) ", category, " pathways in cluster ", cluster))
+
+  print(plot1)
+}
+
+
+
+# redundant, not usign it, keeping for the future
+seu_ssgsea <- function(seurat_object, collections_list, top_n) {
+  GS.hallmark <- escape::getGeneSets(library = collection)
+
+  seurat_object <- escape::runEscape(
+    seurat_object,
+    method = "ssGSEA",
+    gene.sets = GS.hallmark,
+    groups = 5000,
+    min.size = 5,
+    new.assay.name = "escape.ssGSEA"
+  )
+
+  plot <- escape::heatmapEnrichment(
+    seurat_object,
+    group.by = "manual_anno",
+    gene.set.use = rownames(seurat_object@assays$escape.ssGSEA)[1:top_n],
+    assay = "escape.ssGSEA",
+    scale = TRUE,
+    cluster.rows = TRUE,
+    cluster.columns = TRUE
+  ) +
+    ggplot2::theme(
+      # axis.text = element_text(size = 11),
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)
+    )
+
+  gsea_plots <- c(gsea_plots, list(plot))
+
+  return(gsea_plots)
 }
