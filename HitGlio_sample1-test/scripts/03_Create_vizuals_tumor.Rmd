@@ -55,7 +55,6 @@ library(SeuratDisk)
 library(SeuratData)
 
 seu_singlet_azi <- RunAzimuth(seu_singlet_tumor, reference = "humancortexref")
-colnames(seu_singlet_azi@meta.data)
 
 seu_singlet_azi <- NormalizeData(seu_singlet_azi)
 Idents(seu_singlet_azi) <- "predicted.class"
@@ -88,7 +87,7 @@ subset_cells <- list()
 # Loop through each cluster and sample cells
 for (cluster in unique(cluster_ids)) {
   cells_in_cluster <- WhichCells(seu_singlet_tumor, idents = cluster)
-  sampled_cells <- sample(cells_in_cluster, size = 40)
+  sampled_cells <- sample(cells_in_cluster, size = 30)
   # size = min(100, length(cells_in_cluster)) # if no of cell smaller than specified, select max cells in cluster # nolint
   subset_cells[[cluster]] <- sampled_cells
 }
@@ -98,8 +97,6 @@ subset_cells_all <- unlist(subset_cells)
 
 # Subset the Seurat object
 seurat_subset <- subset(seu_singlet_tumor, cells = subset_cells_all)
-seurat_subset
-
 seurat_subset <- NormalizeData(seurat_subset)
 seurat_subset <- ScaleData(seurat_subset)
 
@@ -111,7 +108,7 @@ table(seurat_subset@active.ident)
 markers_genes <- FindAllMarkers(
   seurat_subset,
   log2FC.threshold = 0.2,
-  test.use = "MAST",
+  # test.use = "MAST",
   min.pct = 0.1,
   min.diff.pct = 0.2,
   only.pos = TRUE,
@@ -171,7 +168,7 @@ DoHeatmap(
 ```{r, fig.width=10, fig.height=15}
 DotPlot(
   seurat_subset_heatmap,
-  features = rev(as.character(unique(top_x$gene))), group.by = "cluster.sct.tumor", assay = "RNA"
+  features = rev(as.character(unique(top_x$gene))), group.by = "cluster.log.tumor", assay = "RNA"
 ) + coord_flip() + mycolor2
 ```
 
@@ -204,7 +201,7 @@ gene_rankings <- AUCell_buildRankings(expr_matrix, plotStats = FALSE)
 ```
 
 ### Liu2022 pHGG metapropgrams
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=20, fig.height=25}
 print(liu2022)
 
 auc_scores <- AUCell_calcAUC(
@@ -234,8 +231,15 @@ plot1 <- stacked_images + patchwork::plot_annotation(
 print(plot1)
 ```
 
-### Hara2021 pHGG metapropgrams
 ```{r}
+RidgePlot(
+  seu_singlet_tumor,
+  features = names(liu2022)
+)
+```
+
+### Hara2021 pHGG metapropgrams
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=20, fig.height=25}
 print(hara2021)
 
 auc_scores <- AUCell_calcAUC(
@@ -266,7 +270,7 @@ print(plot1)
 ```
 
 ### Nefter2019 metapropgrams
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=20, fig.height=25}
 neftel2019 <- read_csv("/mnt/sda4/marker_genes/neftel2019.csv")
 
 print(neftel2019)
@@ -299,7 +303,7 @@ print(plot1)
 ```
 
 ### Filbin2018 metapropgrams
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=20, fig.height=25}
 filbin2018 <- read_csv("/mnt/sda4/marker_genes/filbin2018.csv")
 
 print(filbin2018)
@@ -336,7 +340,7 @@ print(plot1)
 The GSVA package provides an implementation of this approach for the following methods:
 * gsva (Hänzelmann, Castelo, and Guinney 2013). This is the default method of the package and similarly to ssGSEA, is a non-parametric method that uses the empirical CDFs of gene expression ranks inside and outside the gene set, but it starts by calculating an expression-level statistic that brings gene expression profiles with different dynamic ranges to a common scale.
 ### GSVA msigdb Hallmark collection = 0 DE pathways
-```{r, eval=FALSE, message=FALSE, echo=FALSE, warning=FALSE}
+```{r, eval=TRUE, message=FALSE, echo=FALSE, warning=FALSE}
 gsva_es <- seu_gsva(
   seu_singlet_tumor,
   category = "H",
@@ -345,7 +349,7 @@ gsva_es <- seu_gsva(
 # as it is 0 pathways here, code for calculating and  plotting is removed
 ```
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warming=FALSE}
 gsva_cx <- "GSVA_H"
 seu_singlet_tumor[[gsva_cx]] <- Seurat::CreateAssayObject(data = gsva_es)
 Seurat::DefaultAssay(seu_singlet_tumor) <- gsva_cx

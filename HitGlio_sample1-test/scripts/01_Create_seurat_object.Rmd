@@ -639,13 +639,26 @@ seu_singlet_tumor <- seu_normalize_var_scale_pca(
   run_pca = TRUE,
   pca.reduction.name = "pca.tumor.log",
   umap.reduction.name = "umap.tumor.pca.log",
-  dims = 1:10,
-  k.param = 50,
+  dims = 1:30,
+  k.param = 30,
   algorithm = 4,
-  resolution = 0.5,
-  group.singletons = FALSE
+  resolution = 0.7,
+  group.singletons = TRUE
 )
-DimPlot(seu_singlet_tumor, reduction = "umap.tumor.pca.log", label = TRUE)
+
+DimPlot(
+  seu_singlet_tumor,
+  reduction = "umap.tumor.pca.log",
+  label = TRUE
+)
+FeaturePlot(
+  seu_singlet_tumor,
+  features = "Cellcycle",
+  reduction = "umap.tumor.pca.log"
+)
+
+
+colnames(seu_singlet_tumor@meta.data)
 DimPlot(seu_singlet_tumor,
   group.by = "MULTI_ID",
   reduction = "umap.tumor.pca.log",
@@ -653,7 +666,7 @@ DimPlot(seu_singlet_tumor,
 )
 
 dist.matrix <- dist(
-  x = Embeddings(object = seu_singlet_tumor[["pca.tumor.log"]])[, 1:10]
+  x = Embeddings(object = seu_singlet_tumor[["pca.tumor.log"]])[, 1:5]
 )
 sil <- silhouette(
   as.numeric(as.character(seu_singlet_tumor@meta.data$cluster.log.tumor)),

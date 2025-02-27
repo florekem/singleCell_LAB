@@ -435,6 +435,71 @@ seu_gsea_plot <- function(top_pathways, category, cluster) {
   print(plot1)
 }
 
+# adds aucell scores into seurat object
+seu_aucell <- function(seurat_object, geneset, gene_rankings) {
+  auc_scores <- AUCell_calcAUC(
+    geneset,
+    gene_rankings
+  )
+  auc_matrix <- as.data.frame(t(getAUC(auc_scores)))
+  seurat_object <- AddMetaData(seurat_object, metadata = auc_matrix)
+  return(seurat_object)
+}
+
+# makes plots based on aucell scores (featureplot, ridgeplot) and genes (densityplot) used to calculate scores
+seu_aucell_plot <- function(
+    seurat_object, geneset, plot_title,
+    feature_plot = FALSE, density_plot = FALSE, ridge_plot = FALSE) {
+  if (feature_plot == TRUE) {
+    images <- map(
+      names(geneset),
+      ~ FeaturePlot(
+        seurat_object,
+        features = .x,
+        pt.size = 1,
+        label = FALSE,
+        reduction = "wnn.umap"
+      ) & mycolor2 & NoAxes()
+    )
+    stacked_images <- patchwork::wrap_plots(images, ncol = 3)
+    plot1 <- stacked_images + patchwork::plot_annotation(
+      title = plot_title,
+      theme = theme(plot.title = element_text(size = 25))
+    )
+    print(plot1)
+  }
+  if (density_plot == TRUE) {
+    cleaned_geneset <- map(
+      geneset,
+      function(x) x[x %in% rownames(seurat_object)]
+    )
+    imap( # indexed map
+      cleaned_geneset,
+      ~ plot_density(
+        seurat_object,
+        features = .x,
+        size = 1.5,
+        joint = TRUE,
+        reduction = "wnn.umap"
+      ) + patchwork::plot_annotation(
+        title = .y, # name of named vector in a list
+        theme = theme(plot.title = element_text(size = 25))
+      ) & NoAxes()
+    )
+  }
+  if (ridge_plot == TRUE) {
+    plot1 <- RidgePlot(
+      seurat_object,
+      features = names(geneset),
+      ncol = 2
+    )
+    print(plot1)
+  }
+}
+
+
+
+
 
 
 # redundant, not usign it, keeping for the future
